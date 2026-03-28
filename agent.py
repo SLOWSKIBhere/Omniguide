@@ -3,7 +3,7 @@ from google.genai import types
 import base64, time, asyncio, io
 import PIL.Image
 
-client = genai.Client(api_key="AIzaSyAxnpECKh2GHdeWtJa6JTicIzrBSG3xzUA")
+
 
 OBSERVER_PROMPT = "You are a Screen Context Observer. Analyze the screenshot and return ONLY:\nAPP: <software visible>\nTASK: <what user is doing>\nFOCUS: <main UI element>\nMax 50 words."
 
