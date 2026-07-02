@@ -2,172 +2,331 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>OmniGuide — Live Screen Co-Pilot</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OmniGuide — AI Screen Co-Pilot</title>
 <style>
-  body { background:#0a0a0f; color:#e8e8f0; font-family:-apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:24px; }
-  .wrap { max-width:720px; margin:0 auto; }
-  h1 { font-size:22px; margin-bottom:4px; }
-  .sub { color:#8888a0; margin-bottom:24px; font-size:14px; }
-  .row { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
-  button { background:#6c5ce7; color:#fff; border:none; padding:12px 20px; border-radius:10px; font-size:15px; cursor:pointer; font-weight:600; }
-  button:disabled { background:#333; cursor:not-allowed; }
-  button.stop { background:#e74c3c; }
-  #status { padding:10px 14px; border-radius:8px; background:#151520; font-size:13px; margin-bottom:16px; }
-  .live { color:#2ecc71; }
-  .off { color:#e74c3c; }
-  input[type=text] { width:100%; padding:12px 14px; border-radius:10px; border:1px solid #333; background:#151520; color:#fff; font-size:15px; box-sizing:border-box; margin-bottom:10px; }
-  video { width:100%; border-radius:12px; margin-bottom:16px; background:#000; display:none; }
-  #log { background:#111118; border-radius:12px; padding:16px; min-height:120px; font-size:14px; line-height:1.5; white-space:pre-wrap; }
-  .entry { margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid #222; }
-  .entry:last-child { border-bottom:none; }
-  .q { color:#8888a0; font-size:12px; margin-bottom:4px; }
-  .a { color:#e8e8f0; }
+  :root { --bg:#0a0a0f; --card:#13131c; --border:#252535; --text:#e8e8f0; --muted:#8888a0; --accent:#6c5ce7; --green:#2ecc71; --red:#e74c3c; --amber:#f39c12; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; min-height:100vh; padding:20px; }
+  .wrap { max-width:800px; margin:0 auto; }
+
+  /* Header */
+  .header { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+  .logo { width:40px; height:40px; border-radius:10px; background:linear-gradient(135deg,#6c5ce7,#a29bfe); display:flex; align-items:center; justify-content:center; font-size:20px; }
+  h1 { font-size:22px; font-weight:700; }
+  .version { font-size:12px; color:var(--muted); background:var(--card); padding:2px 8px; border-radius:6px; border:1px solid var(--border); }
+  .tagline { color:var(--muted); font-size:14px; margin-bottom:24px; }
+
+  /* Status bar */
+  #statusBar { display:flex; align-items:center; gap:8px; padding:12px 16px; background:var(--card); border:1px solid var(--border); border-radius:12px; margin-bottom:16px; font-size:14px; }
+  #statusDot { width:10px; height:10px; border-radius:50%; background:var(--red); transition:0.3s; }
+  #statusDot.live { background:var(--green); box-shadow:0 0 8px var(--green); }
+  #statusDot.loading { background:var(--amber); animation:pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* Controls */
+  .controls { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+  button { background:var(--accent); color:#fff; border:none; padding:12px 20px; border-radius:10px; font-size:14px; cursor:pointer; font-weight:600; transition:0.2s; display:flex; align-items:center; gap:8px; }
+  button:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 4px 12px rgba(108,92,231,0.3); }
+  button:disabled { background:#2a2a3a; color:#555; cursor:not-allowed; }
+  button.secondary { background:transparent; border:1px solid var(--border); color:var(--text); }
+  button.secondary:hover:not(:disabled) { border-color:var(--accent); }
+  button.danger { background:var(--red); }
+
+  /* Screen preview */
+  #previewContainer { position:relative; margin-bottom:16px; border-radius:14px; overflow:hidden; background:#000; display:none; }
+  #previewContainer.active { display:block; }
+  #preview { width:100%; display:block; }
+  .preview-label { position:absolute; top:12px; left:12px; background:rgba(0,0,0,0.7); color:var(--green); padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; }
+
+  /* Input */
+  .inputRow { display:flex; gap:10px; margin-bottom:16px; }
+  input[type=text] { flex:1; padding:14px 16px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:15px; outline:none; transition:0.2s; }
+  input[type=text]:focus { border-color:var(--accent); }
+  input[type=text]:disabled { opacity:0.4; }
+
+  /* Log */
+  #log { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; min-height:200px; max-height:500px; overflow-y:auto; }
+  .entry { margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid var(--border); }
+  .entry:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
+  .entry-header { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+  .entry-q { color:var(--accent); font-size:13px; font-weight:600; }
+  .entry-time { color:var(--muted); font-size:11px; margin-left:auto; }
+  .entry-context { color:var(--muted); font-size:12px; margin-bottom:6px; font-family:monospace; background:var(--bg); padding:6px 10px; border-radius:6px; }
+  .entry-a { color:var(--text); font-size:14px; line-height:1.6; }
+  .entry-error { color:var(--red); }
+  .entry-loading { color:var(--amber); }
+  .entry-system { color:var(--green); font-size:13px; }
+
+  /* Mic indicator */
+  #micIndicator { display:none; position:fixed; bottom:30px; right:30px; background:var(--red); color:#fff; padding:14px 20px; border-radius:30px; font-size:14px; font-weight:600; box-shadow:0 4px 20px rgba(231,76,60,0.4); z-index:100; }
+  #micIndicator.active { display:flex; align-items:center; gap:8px; }
+
+  .footer { text-align:center; color:var(--muted); font-size:12px; margin-top:24px; }
+  canvas { display:none; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🧠 OmniGuide</h1>
-  <div class="sub">Screen + voice co-pilot — powered by Gemini 2.0 Flash</div>
+  <div class="header">
+    <div class="logo">🧠</div>
+    <h1>OmniGuide</h1>
+    <span class="version">v1.2.0</span>
+  </div>
+  <div class="tagline">Real-time AI screen co-pilot — powered by Gemini 2.0 Flash</div>
 
-  <div id="status" class="off">● Not connected</div>
-
-  <div class="row">
-    <button id="connectBtn">Connect</button>
-    <button id="shareBtn" disabled>Share Screen</button>
-    <button id="micBtn" disabled>🎤 Ask (hold to talk)</button>
+  <div id="statusBar">
+    <div id="statusDot"></div>
+    <span id="statusText">Checking backend...</span>
   </div>
 
-  <video id="preview" autoplay muted></video>
+  <div class="controls">
+    <button id="shareBtn">🖥️ Share Screen</button>
+    <button id="micBtn" class="secondary" disabled>🎤 Hold to Talk</button>
+    <button id="stopBtn" class="danger" style="display:none">⏹ Stop Sharing</button>
+  </div>
 
-  <input type="text" id="textQuery" placeholder="Or type your question here and press Enter..." disabled />
+  <div id="previewContainer">
+    <div class="preview-label">● LIVE SCREEN</div>
+    <video id="preview" autoplay muted></video>
+  </div>
 
-  <div id="log"><div class="entry"><span class="q">Ready</span><div class="a">Click "Connect", then "Share Screen", then ask a question (type or hold the mic button).</div></div></div>
+  <div class="inputRow">
+    <input type="text" id="textQuery" placeholder="Type your question and press Enter..." disabled />
+  </div>
+
+  <div id="log">
+    <div class="entry">
+      <div class="entry-system">Ready — Click "Share Screen", then ask a question by typing or holding the mic button.</div>
+    </div>
+  </div>
+
+  <div class="footer">OmniGuide v1.2.0 · Gemini 2.0 Flash · Cloud Run</div>
 </div>
 
-<canvas id="canvas" style="display:none;"></canvas>
+<div id="micIndicator">🔴 Recording... release to send</div>
+<canvas id="canvas"></canvas>
 
 <script>
-const WS_URL = "wss://omniguide-backend-973581476293.us-central1.run.app/ws";
-let ws = null;
-let screenStream = null;
-let recognizing = false;
-let recognition = null;
+const BACKEND_URL = "https://omniguide-backend-973581476293.us-central1.run.app";
+const ASK_URL = BACKEND_URL + "/ask";
+const HEALTH_URL = BACKEND_URL + "/health";
 
-const statusEl = document.getElementById('status');
-const connectBtn = document.getElementById('connectBtn');
+let screenStream = null;
+let isProcessing = false;
+
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
 const shareBtn = document.getElementById('shareBtn');
 const micBtn = document.getElementById('micBtn');
+const stopBtn = document.getElementById('stopBtn');
 const textInput = document.getElementById('textQuery');
+const previewContainer = document.getElementById('previewContainer');
 const video = document.getElementById('preview');
 const canvas = document.getElementById('canvas');
 const log = document.getElementById('log');
+const micIndicator = document.getElementById('micIndicator');
 
-function setStatus(connected) {
-  statusEl.textContent = connected ? "● Connected" : "● Not connected";
-  statusEl.className = connected ? "live" : "off";
+// ── Status check ──
+async function checkBackend() {
+  try {
+    const res = await fetch(HEALTH_URL);
+    const data = await res.json();
+    if (data.status && data.gemini_key_configured) {
+      statusDot.className = 'live';
+      statusText.textContent = `Backend live · v${data.version} · Gemini key configured`;
+      shareBtn.disabled = false;
+    } else if (data.status) {
+      statusDot.className = 'loading';
+      statusText.textContent = `Backend live but Gemini key NOT configured — AI will fail`;
+    } else {
+      throw new Error('Bad status');
+    }
+  } catch (e) {
+    statusDot.className = '';
+    statusText.textContent = `Backend unreachable — try refreshing`;
+  }
 }
+checkBackend();
 
-function addEntry(question, answer) {
+// ── Logging ──
+function addEntry(question, answer, isError, context, latency) {
   const div = document.createElement('div');
   div.className = 'entry';
-  div.innerHTML = `<div class="q">${question}</div><div class="a">${answer}</div>`;
+  const time = new Date().toLocaleTimeString();
+
+  let html = `<div class="entry-header"><span class="entry-q">${escapeHtml(question)}</span><span class="entry-time">${time}</span></div>`;
+  if (context) html += `<div class="entry-context">${escapeHtml(context)}</div>`;
+  const cls = isError ? 'entry-error' : '';
+  html += `<div class="entry-a ${cls}">${escapeHtml(answer)}</div>`;
+  if (latency) html += `<div class="entry-time" style="margin-top:4px">⚡ ${latency}ms</div>`;
+  div.innerHTML = html;
   log.prepend(div);
 }
 
-connectBtn.onclick = () => {
-  ws = new WebSocket(WS_URL);
-  ws.onopen = () => {
-    setStatus(true);
-    shareBtn.disabled = false;
-    connectBtn.disabled = true;
-    addEntry("System", "Connected to OmniGuide backend.");
-  };
-  ws.onclose = () => {
-    setStatus(false);
-    connectBtn.disabled = false;
-    shareBtn.disabled = true;
-    micBtn.disabled = true;
-    textInput.disabled = true;
-  };
-  ws.onerror = () => addEntry("Error", "WebSocket connection failed. Try reconnecting.");
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.error) {
-      addEntry("Error", data.error);
-    } else {
-      addEntry(`(${data.context || 'context'})`, data.response);
-    }
-  };
-};
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
 
+// ── Screen share ──
 shareBtn.onclick = async () => {
   try {
-    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 } });
     video.srcObject = screenStream;
-    video.style.display = 'block';
+    previewContainer.classList.add('active');
     micBtn.disabled = false;
     textInput.disabled = false;
-    addEntry("System", "Screen sharing active. You can now ask questions.");
+    shareBtn.style.display = 'none';
+    stopBtn.style.display = 'block';
+    addEntry('System', 'Screen sharing active. Ask a question!', false, null, null);
+
+    screenStream.getVideoTracks()[0].onended = stopSharing;
   } catch (err) {
-    addEntry("Error", "Screen share permission denied or cancelled.");
+    addEntry('Error', 'Screen share was cancelled or denied.', true, null, null);
   }
 };
 
+function stopSharing() {
+  if (screenStream) {
+    screenStream.getTracks().forEach(t => t.stop());
+    screenStream = null;
+  }
+  previewContainer.classList.remove('active');
+  micBtn.disabled = true;
+  textInput.disabled = true;
+  shareBtn.style.display = 'block';
+  stopBtn.style.display = 'none';
+  addEntry('System', 'Screen sharing stopped.', false, null, null);
+}
+stopBtn.onclick = stopSharing;
+
+// ── Capture frame ──
 function captureFrame() {
   const w = video.videoWidth, h = video.videoHeight;
   if (!w || !h) return null;
-  canvas.width = w;
-  canvas.height = h;
+  // Scale down to max 1280px wide for faster upload
+  const scale = Math.min(1, 1280 / w);
+  canvas.width = w * scale;
+  canvas.height = h * scale;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, w, h);
-  return canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
 }
 
-function sendQuery(queryText) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    addEntry("Error", "Not connected. Click Connect first.");
+// ── Send query via REST ──
+async function sendQuery(queryText) {
+  if (isProcessing) return;
+  if (!screenStream) {
+    addEntry('Error', 'Share your screen first!', true, null, null);
     return;
   }
+
   const frame = captureFrame();
   if (!frame) {
-    addEntry("Error", "No screen frame available. Make sure screen sharing is active.");
+    addEntry('Error', 'Could not capture screen frame. Try again.', true, null, null);
     return;
   }
-  ws.send(JSON.stringify({ image: frame, query: queryText }));
+
+  isProcessing = true;
+  statusDot.className = 'loading';
+  statusText.textContent = 'Asking Gemini...';
+
+  addEntry(queryText, '⏳ Processing...', false, null, null);
+  const loadingEntry = log.firstChild;
+
+  try {
+    const res = await fetch(ASK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: frame, query: queryText })
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      const ctx = data.context || '';
+      const isErr = data.response && data.response.includes('ERROR');
+      loadingEntry.querySelector('.entry-a').textContent = data.response;
+      loadingEntry.querySelector('.entry-a').className = isErr ? 'entry-a entry-error' : 'entry-a';
+      if (ctx) {
+        const ctxDiv = document.createElement('div');
+        ctxDiv.className = 'entry-context';
+        ctxDiv.textContent = ctx;
+        loadingEntry.insertBefore(ctxDiv, loadingEntry.querySelector('.entry-a'));
+      }
+      if (data.latency_ms) {
+        const latDiv = document.createElement('div');
+        latDiv.className = 'entry-time';
+        latDiv.style.marginTop = '4px';
+        latDiv.textContent = `⚡ ${data.latency_ms}ms · ${data.tokens || 0} tokens`;
+        loadingEntry.appendChild(latDiv);
+      }
+    } else {
+      const errMsg = data.error || data.detail || `HTTP ${res.status}`;
+      loadingEntry.querySelector('.entry-a').textContent = `Error: ${errMsg}`;
+      loadingEntry.querySelector('.entry-a').className = 'entry-a entry-error';
+    }
+  } catch (e) {
+    loadingEntry.querySelector('.entry-a').textContent = `Network error: ${e.message}. Backend may be sleeping (Cloud Run cold start). Try again in 10 seconds.`;
+    loadingEntry.querySelector('.entry-a').className = 'entry-a entry-error';
+  }
+
+  isProcessing = false;
+  statusDot.className = 'live';
+  statusText.textContent = 'Ready';
 }
 
-textInput.onkeypress = (e) => {
-  if (e.key === 'Enter' && textInput.value.trim()) {
+// ── Text input ──
+textInput.onkeydown = (e) => {
+  if (e.key === 'Enter' && textInput.value.trim() && !isProcessing) {
     sendQuery(textInput.value.trim());
     textInput.value = '';
   }
 };
 
-// Voice input via Web Speech API (Chrome/Edge desktop support)
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (SpeechRecognition) {
-  recognition = new SpeechRecognition();
+// ── Voice input ──
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SR) {
+  const recognition = new SR();
   recognition.continuous = false;
   recognition.interimResults = false;
   recognition.lang = 'en-US';
 
-  recognition.onresult = (event) => {
-    const transcript = event.results[0][0].transcript;
+  let recognizing = false;
+
+  recognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
     sendQuery(transcript);
   };
-  recognition.onerror = () => { recognizing = false; micBtn.textContent = "🎤 Ask (hold to talk)"; };
-  recognition.onend = () => { recognizing = false; micBtn.textContent = "🎤 Ask (hold to talk)"; };
+  recognition.onerror = (e) => {
+    recognizing = false;
+    micIndicator.classList.remove('active');
+    micBtn.textContent = '🎤 Hold to Talk';
+    addEntry('Voice Error', `Could not capture voice: ${e.error}`, true, null, null);
+  };
+  recognition.onend = () => {
+    recognizing = false;
+    micIndicator.classList.remove('active');
+    micBtn.textContent = '🎤 Hold to Talk';
+  };
 
   micBtn.onmousedown = () => {
-    if (!recognizing) {
+    if (!recognizing && screenStream && !isProcessing) {
       recognizing = true;
-      micBtn.textContent = "🔴 Listening...";
+      micBtn.textContent = '🔴 Listening...';
+      micIndicator.classList.add('active');
       recognition.start();
     }
   };
+  micBtn.onmouseup = () => {
+    if (recognizing) recognition.stop();
+  };
+  micBtn.ontouchstart = (e) => { e.preventDefault(); micBtn.onmousedown(); };
+  micBtn.ontouchend = (e) => { e.preventDefault(); micBtn.onmouseup(); };
 } else {
-  micBtn.onclick = () => addEntry("System", "Voice input not supported in this browser — use the text box instead.");
+  micBtn.onclick = () => addEntry('System', 'Voice input not supported in this browser. Use the text box.', false, null, null);
 }
 </script>
 </body>
