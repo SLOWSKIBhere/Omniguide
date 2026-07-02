@@ -14,7 +14,7 @@
   h1 { font-size:22px; font-weight:700; }
   .version { font-size:12px; color:var(--muted); background:var(--card); padding:2px 8px; border-radius:6px; border:1px solid var(--border); }
   .tagline { color:var(--muted); font-size:14px; margin-bottom:24px; }
-  #statusBar { display:flex; align-items:center; gap:8px; padding:12px 16px; background:var(--card); border:1px solid var(--border); border-radius:12px; margin-bottom:16px; font-size:14px; }
+  #statusBar { display:flex; align-items:center; gap:8px; padding:12px 16px; background:var(--card); border:1px solid var(--border); border-radius:12px; margin-bottom:16px; font-size:14px; flex-wrap:wrap; }
   #statusDot { width:10px; height:10px; border-radius:50%; background:var(--red); transition:0.3s; flex-shrink:0; }
   #statusDot.live { background:var(--green); box-shadow:0 0 8px var(--green); }
   #statusDot.loading { background:var(--amber); animation:pulse 1s infinite; }
@@ -37,17 +37,22 @@
   #log { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; min-height:200px; max-height:500px; overflow-y:auto; }
   .entry { margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid var(--border); }
   .entry:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
-  .entry-header { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+  .entry-header { display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
   .entry-q { color:var(--accent); font-size:13px; font-weight:600; }
   .entry-time { color:var(--muted); font-size:11px; margin-left:auto; }
   .entry-context { color:var(--muted); font-size:12px; margin-bottom:6px; font-family:monospace; background:var(--bg); padding:6px 10px; border-radius:6px; }
+  .entry-meta { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; }
+  .meta-badge { font-size:10px; padding:2px 8px; border-radius:4px; font-weight:600; }
+  .meta-intent { background:#1a1a2e; color:var(--accent); border:1px solid var(--accent); }
+  .meta-conf { background:#0d1f0d; color:var(--green); }
+  .meta-chain { background:#1a1a0d; color:var(--amber); }
+  .meta-error { background:#2d0d0d; color:var(--red); }
   .entry-a { color:var(--text); font-size:14px; line-height:1.6; }
   .entry-error { color:var(--red); }
   .entry-system { color:var(--green); font-size:13px; }
   #micIndicator { display:none; position:fixed; bottom:30px; right:30px; background:var(--red); color:#fff; padding:14px 20px; border-radius:30px; font-size:14px; font-weight:600; box-shadow:0 4px 20px rgba(231,76,60,0.4); z-index:100; }
   #micIndicator.active { display:flex; align-items:center; gap:8px; }
   .footer { text-align:center; color:var(--muted); font-size:12px; margin-top:24px; }
-  .api-badge { font-size:11px; color:var(--muted); margin-left:8px; }
   canvas { display:none; }
 </style>
 </head>
@@ -56,14 +61,14 @@
   <div class="header">
     <div class="logo">🧠</div>
     <h1>OmniGuide</h1>
-    <span class="version">v1.2.0</span>
+    <span class="version">v2.0.0</span>
   </div>
-  <div class="tagline">Real-time AI screen co-pilot — powered by Gemini 2.0 Flash</div>
+  <div class="tagline">Multi-agent AI screen co-pilot — Vision + OCR + Intent + Reasoning</div>
 
   <div id="statusBar">
     <div id="statusDot"></div>
     <span id="statusText">Checking backend...</span>
-    <span class="api-badge" id="apiBadge"></span>
+    <span id="apiBadge" style="font-size:11px;color:var(--muted)"></span>
   </div>
 
   <div class="controls">
@@ -87,7 +92,7 @@
     </div>
   </div>
 
-  <div class="footer">OmniGuide v1.2.0 · Gemini 2.0 Flash · Google Cloud Run</div>
+  <div class="footer">OmniGuide v2.0.0 · 6-agent pipeline · Gemini 2.0 Flash · Google Cloud Run</div>
 </div>
 
 <div id="micIndicator">🔴 Recording... release to send</div>
@@ -101,33 +106,34 @@ const HEALTH_URL = BACKEND_URL + "/health";
 
 let screenStream = null;
 let isProcessing = false;
-let useMode = null; // 'rest' or 'ws'
+let useMode = null;
 let ws = null;
+let lastQuery = '';
 
-const statusDot = document.getElementById('statusDot');
-const statusText = document.getElementById('statusText');
-const apiBadge = document.getElementById('apiBadge');
-const shareBtn = document.getElementById('shareBtn');
-const micBtn = document.getElementById('micBtn');
-const stopBtn = document.getElementById('stopBtn');
-const textInput = document.getElementById('textQuery');
-const previewContainer = document.getElementById('previewContainer');
-const video = document.getElementById('preview');
-const canvas = document.getElementById('canvas');
-const log = document.getElementById('log');
-const micIndicator = document.getElementById('micIndicator');
+const $ = id => document.getElementById(id);
+const statusDot = $('statusDot'), statusText = $('statusText'), apiBadge = $('apiBadge');
+const shareBtn = $('shareBtn'), micBtn = $('micBtn'), stopBtn = $('stopBtn');
+const textInput = $('textQuery'), previewContainer = $('previewContainer');
+const video = $('preview'), canvas = $('canvas'), log = $('log');
+const micIndicator = $('micIndicator');
 
-function escapeHtml(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-function addEntry(question, answer, isError, context, latency, tokens) {
+function addEntry(question, answer, isError, context, latency, tokens, intent, confidence, chain, errors) {
   const div = document.createElement('div');
   div.className = 'entry';
   const time = new Date().toLocaleTimeString();
   let html = '<div class="entry-header"><span class="entry-q">' + escapeHtml(question) + '</span><span class="entry-time">' + time + '</span></div>';
+
+  // Meta badges
+  let metaHtml = '<div class="entry-meta">';
+  if (intent) metaHtml += '<span class="meta-badge meta-intent">' + escapeHtml(intent) + '</span>';
+  if (confidence !== undefined && confidence !== null) metaHtml += '<span class="meta-badge meta-conf">conf ' + confidence + '</span>';
+  if (chain && chain.length) metaHtml += '<span class="meta-badge meta-chain">agents: ' + chain.join('→') + '</span>';
+  if (errors && errors.length) metaHtml += '<span class="meta-badge meta-error">' + errors.length + ' error' + (errors.length > 1 ? 's' : '') + '</span>';
+  metaHtml += '</div>';
+  html += metaHtml;
+
   if (context) html += '<div class="entry-context">' + escapeHtml(context) + '</div>';
   const cls = isError ? 'entry-a entry-error' : 'entry-a';
   html += '<div class="' + cls + '">' + escapeHtml(answer) + '</div>';
@@ -137,75 +143,50 @@ function addEntry(question, answer, isError, context, latency, tokens) {
   return div;
 }
 
-// ── Backend health check + detect REST vs WS ──
+// ── Backend check ──
 async function checkBackend() {
   try {
     const res = await fetch(HEALTH_URL);
     const data = await res.json();
     if (data.status && data.gemini_key_configured) {
       statusDot.className = 'live';
-      statusText.textContent = 'Backend live · v' + data.version;
+      statusText.textContent = 'Backend live · v' + (data.version || '1.x');
+      if (data.agents) statusText.textContent += ' · ' + data.agents.length + ' agents';
 
-      // Test if /ask endpoint exists (v1.2.0+ backend)
       try {
-        const testRes = await fetch(ASK_URL, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({image:'test',query:'test'}) });
-        if (testRes.status !== 404) {
-          useMode = 'rest';
-          apiBadge.textContent = '(REST /ask)';
-        } else {
-          useMode = 'ws';
-          apiBadge.textContent = '(WebSocket /ws)';
-          connectWS();
-        }
-      } catch(e) {
-        useMode = 'ws';
-        apiBadge.textContent = '(WebSocket /ws)';
-        connectWS();
-      }
+        const testRes = await fetch(ASK_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({image:'test',query:'test'}) });
+        if (testRes.status !== 404) { useMode = 'rest'; apiBadge.textContent = '(REST /ask)'; }
+        else { useMode = 'ws'; apiBadge.textContent = '(WebSocket /ws)'; connectWS(); }
+      } catch(e) { useMode = 'ws'; apiBadge.textContent = '(WebSocket /ws)'; connectWS(); }
 
       shareBtn.disabled = false;
     } else if (data.status) {
       statusDot.className = 'loading';
       statusText.textContent = 'Backend live but Gemini key NOT configured';
-    } else {
-      throw new Error('Bad status');
-    }
+    } else { throw new Error('Bad status'); }
   } catch (e) {
     statusDot.className = '';
     statusText.textContent = 'Backend unreachable — try refreshing';
   }
 }
 
-// ── WebSocket connection (fallback mode) ──
 function connectWS() {
   try {
     ws = new WebSocket(WS_URL);
-    ws.onopen = () => { statusDot.className = 'live'; };
-    ws.onclose = () => {
-      if (useMode === 'ws') {
-        statusDot.className = '';
-        statusText.textContent = 'WebSocket disconnected — will retry on next question';
-        ws = null;
-      }
-    };
+    ws.onopen = () => { if (useMode === 'ws') statusDot.className = 'live'; };
+    ws.onclose = () => { if (useMode === 'ws') { statusDot.className = ''; ws = null; } };
     ws.onerror = () => { ws = null; };
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.error) {
-        addEntry('Error', data.error, true, null, null, null);
-      } else {
-        addEntry(lastQuery || 'Query', data.response, false, data.context, data.latency_ms, data.tokens);
+      if (data.error) { addEntry('Error', data.error, true); }
+      else {
+        addEntry(lastQuery || 'Query', data.response, false, data.context, data.latency_ms, data.tokens,
+          data.intent, data.confidence, data.agent_chain, data.errors);
       }
-      isProcessing = false;
-      statusDot.className = 'live';
-      statusText.textContent = 'Ready';
+      isProcessing = false; statusDot.className = 'live'; statusText.textContent = 'Ready';
     };
-  } catch(e) {
-    console.error('WS connect failed:', e);
-  }
+  } catch(e) { console.error('WS failed:', e); }
 }
-
-let lastQuery = '';
 
 checkBackend();
 
@@ -215,110 +196,69 @@ shareBtn.onclick = async () => {
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 } });
     video.srcObject = screenStream;
     previewContainer.classList.add('active');
-    micBtn.disabled = false;
-    textInput.disabled = false;
-    shareBtn.style.display = 'none';
-    stopBtn.style.display = 'block';
-    addEntry('System', 'Screen sharing active. Ask a question!', false, null, null, null);
+    micBtn.disabled = false; textInput.disabled = false;
+    shareBtn.style.display = 'none'; stopBtn.style.display = 'block';
+    addEntry('System', 'Screen sharing active. Ask a question!', false);
     screenStream.getVideoTracks()[0].onended = stopSharing;
-  } catch (err) {
-    addEntry('Error', 'Screen share was cancelled or denied.', true, null, null, null);
-  }
+  } catch (err) { addEntry('Error', 'Screen share was cancelled or denied.', true); }
 };
 
 function stopSharing() {
-  if (screenStream) {
-    screenStream.getTracks().forEach(t => t.stop());
-    screenStream = null;
-  }
+  if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
   previewContainer.classList.remove('active');
-  micBtn.disabled = true;
-  textInput.disabled = true;
-  shareBtn.style.display = 'block';
-  stopBtn.style.display = 'none';
-  addEntry('System', 'Screen sharing stopped.', false, null, null, null);
+  micBtn.disabled = true; textInput.disabled = true;
+  shareBtn.style.display = 'block'; stopBtn.style.display = 'none';
+  addEntry('System', 'Screen sharing stopped.', false);
 }
 stopBtn.onclick = stopSharing;
 
-// ── Capture frame ──
 function captureFrame() {
   const w = video.videoWidth, h = video.videoHeight;
   if (!w || !h) return null;
   const scale = Math.min(1, 1280 / w);
-  canvas.width = w * scale;
-  canvas.height = h * scale;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  canvas.width = w * scale; canvas.height = h * scale;
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
 }
 
 // ── Send query ──
 async function sendQuery(queryText) {
   if (isProcessing) return;
-  if (!screenStream) {
-    addEntry('Error', 'Share your screen first!', true, null, null, null);
-    return;
-  }
+  if (!screenStream) { addEntry('Error', 'Share your screen first!', true); return; }
 
   const frame = captureFrame();
-  if (!frame) {
-    addEntry('Error', 'Could not capture screen frame.', true, null, null, null);
-    return;
-  }
+  if (!frame) { addEntry('Error', 'Could not capture screen frame.', true); return; }
 
   isProcessing = true;
   statusDot.className = 'loading';
-  statusText.textContent = 'Asking Gemini...';
+  statusText.textContent = 'Running agent pipeline...';
   lastQuery = queryText;
 
-  // Add loading entry
-  const loadingEl = addEntry(queryText, '⏳ Processing...', false, null, null, null);
+  const loadingEl = addEntry(queryText, '⏳ Running Vision → OCR → Intent → Reasoning...', false);
   const answerEl = loadingEl.querySelector('.entry-a');
 
   try {
     if (useMode === 'rest') {
-      // REST mode
       const res = await fetch(ASK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: frame, query: queryText })
       });
       const data = await res.json();
-
       if (res.ok) {
-        const isErr = data.response && (data.response.includes('ERROR') || data.response.includes('could not process'));
-        answerEl.textContent = data.response;
-        answerEl.className = isErr ? 'entry-a entry-error' : 'entry-a';
-        if (data.context) {
-          const ctxDiv = document.createElement('div');
-          ctxDiv.className = 'entry-context';
-          ctxDiv.textContent = data.context;
-          loadingEl.insertBefore(ctxDiv, answerEl);
-        }
-        if (data.latency_ms) {
-          const latDiv = document.createElement('div');
-          latDiv.className = 'entry-time';
-          latDiv.style.marginTop = '4px';
-          latDiv.textContent = '⚡ ' + data.latency_ms + 'ms' + (data.tokens ? ' · ' + data.tokens + ' tokens' : '');
-          loadingEl.appendChild(latDiv);
-        }
+        loadingEl.remove(); // Remove loading entry, add full entry with metadata
+        addEntry(queryText, data.response, false, data.context, data.latency_ms, data.tokens,
+          data.intent, data.confidence, data.agent_chain, data.errors);
       } else {
-        const errMsg = data.error || data.detail || 'HTTP ' + res.status;
-        answerEl.textContent = 'Error: ' + errMsg;
+        answerEl.textContent = 'Error: ' + (data.error || data.detail || 'HTTP ' + res.status);
         answerEl.className = 'entry-a entry-error';
       }
     } else if (useMode === 'ws') {
-      // WebSocket mode
+      if (!ws || ws.readyState !== WebSocket.OPEN) { connectWS(); await new Promise(r => setTimeout(r, 2000)); }
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        connectWS();
-        await new Promise(r => setTimeout(r, 2000));
-      }
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        answerEl.textContent = 'Could not connect to backend WebSocket. Try refreshing.';
+        answerEl.textContent = 'Could not connect to backend. Try refreshing.';
         answerEl.className = 'entry-a entry-error';
       } else {
         ws.send(JSON.stringify({ image: frame, query: queryText }));
-        // Response handled by ws.onmessage — remove loading entry since onmessage adds its own
         loadingEl.remove();
         return;
       }
@@ -327,20 +267,15 @@ async function sendQuery(queryText) {
       answerEl.className = 'entry-a entry-error';
     }
   } catch (e) {
-    answerEl.textContent = 'Network error: ' + e.message + '. Backend may be sleeping (Cloud Run cold start). Try again in 10 seconds.';
+    answerEl.textContent = 'Network error: ' + e.message + '. Backend may be cold-starting. Try again in 10s.';
     answerEl.className = 'entry-a entry-error';
   }
-
-  isProcessing = false;
-  statusDot.className = 'live';
-  statusText.textContent = 'Ready';
+  isProcessing = false; statusDot.className = 'live'; statusText.textContent = 'Ready';
 }
 
-// ── Text input ──
 textInput.onkeydown = (e) => {
   if (e.key === 'Enter' && textInput.value.trim() && !isProcessing) {
-    sendQuery(textInput.value.trim());
-    textInput.value = '';
+    sendQuery(textInput.value.trim()); textInput.value = '';
   }
 };
 
@@ -348,37 +283,17 @@ textInput.onkeydown = (e) => {
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (SR) {
   const recognition = new SR();
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.lang = 'en-US';
+  recognition.continuous = false; recognition.interimResults = false; recognition.lang = 'en-US';
   let recognizing = false;
-
-  recognition.onresult = (e) => { sendQuery(e.results[0][0].transcript); };
-  recognition.onerror = (e) => {
-    recognizing = false;
-    micIndicator.classList.remove('active');
-    micBtn.textContent = '🎤 Hold to Talk';
-    addEntry('Voice Error', 'Could not capture voice: ' + e.error, true, null, null, null);
-  };
-  recognition.onend = () => {
-    recognizing = false;
-    micIndicator.classList.remove('active');
-    micBtn.textContent = '🎤 Hold to Talk';
-  };
-
-  micBtn.onmousedown = () => {
-    if (!recognizing && screenStream && !isProcessing) {
-      recognizing = true;
-      micBtn.textContent = '🔴 Listening...';
-      micIndicator.classList.add('active');
-      recognition.start();
-    }
-  };
+  recognition.onresult = (e) => sendQuery(e.results[0][0].transcript);
+  recognition.onerror = (e) => { recognizing = false; micIndicator.classList.remove('active'); micBtn.textContent = '🎤 Hold to Talk'; addEntry('Voice Error', 'Could not capture voice: ' + e.error, true); };
+  recognition.onend = () => { recognizing = false; micIndicator.classList.remove('active'); micBtn.textContent = '🎤 Hold to Talk'; };
+  micBtn.onmousedown = () => { if (!recognizing && screenStream && !isProcessing) { recognizing = true; micBtn.textContent = '🔴 Listening...'; micIndicator.classList.add('active'); recognition.start(); } };
   micBtn.onmouseup = () => { if (recognizing) recognition.stop(); };
   micBtn.ontouchstart = (e) => { e.preventDefault(); micBtn.onmousedown(); };
   micBtn.ontouchend = (e) => { e.preventDefault(); micBtn.onmouseup(); };
 } else {
-  micBtn.onclick = () => addEntry('System', 'Voice input not supported in this browser. Use the text box.', false, null, null, null);
+  micBtn.onclick = () => addEntry('System', 'Voice not supported in this browser. Use the text box.', false);
 }
 </script>
 </body>
