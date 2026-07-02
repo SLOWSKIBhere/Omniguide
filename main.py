@@ -2,18 +2,21 @@ import os
 import json
 import uuid
 import asyncio
+import logging
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from agent import run_agent_pipeline
 from telemetry import log_interaction
 
+logger = logging.getLogger("omniguide")
+logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="OmniGuide API", version="1.1.0")
+app = FastAPI(title="OmniGuide API", version="1.2.0")
 
-# Allow all origins in dev — tighten for production
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,49 +25,77 @@ app.add_middleware(
 )
 
 
+class AskRequest(BaseModel):
+    image: str  # base64 JPEG
+    query: str
+
+
 @app.get("/health")
 async def health():
-    """Cloud Run uses this endpoint to verify the container is alive."""
     gemini_key_set = bool(os.environ.get("GEMINI_API_KEY"))
     return JSONResponse({
         "status": "OmniGuide is live",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "gemini_key_configured": gemini_key_set,
+    })
+
+
+@app.post("/ask")
+async def ask_endpoint(req: AskRequest):
+    """
+    REST endpoint for screen + query processing.
+    More reliable than WebSocket on Cloud Run.
+    """
+    session_id = str(uuid.uuid4())
+
+    image_base64 = req.image.strip()
+    user_query = req.query.strip()
+
+    if not image_base64:
+        return JSONResponse({"error": "Missing or empty image field"}, status_code=400)
+    if not user_query:
+        return JSONResponse({"error": "Missing or empty query field"}, status_code=400)
+
+    result = await run_agent_pipeline(image_base64, user_query)
+
+    asyncio.create_task(log_interaction(
+        session_id=session_id,
+        user_query=user_query,
+        observer_output=result["observer_context"],
+        guide_response=result["guide_response"],
+        token_count=result["total_tokens"],
+        latency_ms=result["latency_ms"]
+    ))
+
+    return JSONResponse({
+        "response": result["guide_response"],
+        "context": result["observer_context"],
+        "latency_ms": result["latency_ms"],
+        "tokens": result["total_tokens"]
     })
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """
-    Main WebSocket handler.
-    Expects JSON: { "image": "<base64 JPEG>", "query": "<text>" }
-    Returns JSON: { "response": "...", "context": "...", "latency_ms": 220.4 }
-    """
     await websocket.accept()
     session_id = str(uuid.uuid4())
-    print(f"[WS] Session connected: {session_id}")
+    logger.info(f"[WS] Session: {session_id}")
 
     try:
         while True:
             raw = await websocket.receive_text()
-
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:
-                await websocket.send_text(json.dumps({"error": "Invalid JSON payload"}))
+                await websocket.send_text(json.dumps({"error": "Invalid JSON"}))
                 continue
 
             image_base64 = data.get("image", "").strip()
             user_query = data.get("query", "").strip()
 
-            if not image_base64:
-                await websocket.send_text(json.dumps({"error": "Missing or empty image field"}))
+            if not image_base64 or not user_query:
+                await websocket.send_text(json.dumps({"error": "Missing image or query"}))
                 continue
-            if not user_query:
-                await websocket.send_text(json.dumps({"error": "Missing or empty query field"}))
-                continue
-
-            print(f"[WS] Query: '{user_query[:60]}'")
 
             result = await run_agent_pipeline(image_base64, user_query)
 
@@ -85,6 +116,6 @@ async def websocket_endpoint(websocket: WebSocket):
             }))
 
     except WebSocketDisconnect:
-        print(f"[WS] Session disconnected: {session_id}")
+        logger.info(f"[WS] Disconnected: {session_id}")
     except Exception as e:
-        print(f"[WS ERROR] {e}")
+        logger.error(f"[WS ERROR] {e}")
