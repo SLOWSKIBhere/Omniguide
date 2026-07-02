@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>OmniGuide — Live Screen Co-Pilot</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+  body { background:#0a0a0f; color:#e8e8f0; font-family:-apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:24px; }
+  .wrap { max-width:720px; margin:0 auto; }
+  h1 { font-size:22px; margin-bottom:4px; }
+  .sub { color:#8888a0; margin-bottom:24px; font-size:14px; }
+  .row { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+  button { background:#6c5ce7; color:#fff; border:none; padding:12px 20px; border-radius:10px; font-size:15px; cursor:pointer; font-weight:600; }
+  button:disabled { background:#333; cursor:not-allowed; }
+  button.stop { background:#e74c3c; }
+  #status { padding:10px 14px; border-radius:8px; background:#151520; font-size:13px; margin-bottom:16px; }
+  .live { color:#2ecc71; }
+  .off { color:#e74c3c; }
+  input[type=text] { width:100%; padding:12px 14px; border-radius:10px; border:1px solid #333; background:#151520; color:#fff; font-size:15px; box-sizing:border-box; margin-bottom:10px; }
+  video { width:100%; border-radius:12px; margin-bottom:16px; background:#000; display:none; }
+  #log { background:#111118; border-radius:12px; padding:16px; min-height:120px; font-size:14px; line-height:1.5; white-space:pre-wrap; }
+  .entry { margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid #222; }
+  .entry:last-child { border-bottom:none; }
+  .q { color:#8888a0; font-size:12px; margin-bottom:4px; }
+  .a { color:#e8e8f0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧠 OmniGuide</h1>
+  <div class="sub">Screen + voice co-pilot — powered by Gemini 2.0 Flash</div>
+
+  <div id="status" class="off">● Not connected</div>
+
+  <div class="row">
+    <button id="connectBtn">Connect</button>
+    <button id="shareBtn" disabled>Share Screen</button>
+    <button id="micBtn" disabled>🎤 Ask (hold to talk)</button>
+  </div>
+
+  <video id="preview" autoplay muted></video>
+
+  <input type="text" id="textQuery" placeholder="Or type your question here and press Enter..." disabled />
+
+  <div id="log"><div class="entry"><span class="q">Ready</span><div class="a">Click "Connect", then "Share Screen", then ask a question (type or hold the mic button).</div></div></div>
+</div>
+
+<canvas id="canvas" style="display:none;"></canvas>
+
+<script>
+const WS_URL = "wss://omniguide-backend-973581476293.us-central1.run.app/ws";
+let ws = null;
+let screenStream = null;
+let recognizing = false;
+let recognition = null;
+
+const statusEl = document.getElementById('status');
+const connectBtn = document.getElementById('connectBtn');
+const shareBtn = document.getElementById('shareBtn');
+const micBtn = document.getElementById('micBtn');
+const textInput = document.getElementById('textQuery');
+const video = document.getElementById('preview');
+const canvas = document.getElementById('canvas');
+const log = document.getElementById('log');
+
+function setStatus(connected) {
+  statusEl.textContent = connected ? "● Connected" : "● Not connected";
+  statusEl.className = connected ? "live" : "off";
+}
+
+function addEntry(question, answer) {
+  const div = document.createElement('div');
+  div.className = 'entry';
+  div.innerHTML = `<div class="q">${question}</div><div class="a">${answer}</div>`;
+  log.prepend(div);
+}
+
+connectBtn.onclick = () => {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    setStatus(true);
+    shareBtn.disabled = false;
+    connectBtn.disabled = true;
+    addEntry("System", "Connected to OmniGuide backend.");
+  };
+  ws.onclose = () => {
+    setStatus(false);
+    connectBtn.disabled = false;
+    shareBtn.disabled = true;
+    micBtn.disabled = true;
+    textInput.disabled = true;
+  };
+  ws.onerror = () => addEntry("Error", "WebSocket connection failed. Try reconnecting.");
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.error) {
+      addEntry("Error", data.error);
+    } else {
+      addEntry(`(${data.context || 'context'})`, data.response);
+    }
+  };
+};
+
+shareBtn.onclick = async () => {
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    video.srcObject = screenStream;
+    video.style.display = 'block';
+    micBtn.disabled = false;
+    textInput.disabled = false;
+    addEntry("System", "Screen sharing active. You can now ask questions.");
+  } catch (err) {
+    addEntry("Error", "Screen share permission denied or cancelled.");
+  }
+};
+
+function captureFrame() {
+  const w = video.videoWidth, h = video.videoHeight;
+  if (!w || !h) return null;
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+}
+
+function sendQuery(queryText) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    addEntry("Error", "Not connected. Click Connect first.");
+    return;
+  }
+  const frame = captureFrame();
+  if (!frame) {
+    addEntry("Error", "No screen frame available. Make sure screen sharing is active.");
+    return;
+  }
+  ws.send(JSON.stringify({ image: frame, query: queryText }));
+}
+
+textInput.onkeypress = (e) => {
+  if (e.key === 'Enter' && textInput.value.trim()) {
+    sendQuery(textInput.value.trim());
+    textInput.value = '';
+  }
+};
+
+// Voice input via Web Speech API (Chrome/Edge desktop support)
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SpeechRecognition) {
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    sendQuery(transcript);
+  };
+  recognition.onerror = () => { recognizing = false; micBtn.textContent = "🎤 Ask (hold to talk)"; };
+  recognition.onend = () => { recognizing = false; micBtn.textContent = "🎤 Ask (hold to talk)"; };
+
+  micBtn.onmousedown = () => {
+    if (!recognizing) {
+      recognizing = true;
+      micBtn.textContent = "🔴 Listening...";
+      recognition.start();
+    }
+  };
+} else {
+  micBtn.onclick = () => addEntry("System", "Voice input not supported in this browser — use the text box instead.");
+}
+</script>
+</body>
+</html>
