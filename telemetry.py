@@ -16,7 +16,7 @@ def _get_db():
     if _db is None:
         try:
             from google.cloud import firestore
-            _db = firestore.AsyncClient(project="omniguide-hackathon")
+            _db = firestore.AsyncClient(project=os.environ.get("GCP_PROJECT_ID", "omniguide-hackathon"))
         except Exception as e:
             logger.warning("Firestore unavailable: %s — telemetry will be skipped", e)
     return _db
