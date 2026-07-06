@@ -184,3 +184,37 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info("[WS] Disconnected: %s", session_id)
     except Exception as e:
         logger.error("[WS ERROR] %s", e)
+
+
+@app.get("/r")
+async def redirect_endpoint(id: str, url: str):
+    """
+    Click-tracking redirect for financial scraper articles.
+    Logs article_hash + url + timestamp to Firestore article_clicks collection.
+    Returns HTTP 302 redirect to the real article URL.
+    Reuses telemetry._get_db() — no new Firestore client, no new imports beyond stdlib.
+    """
+    from urllib.parse import unquote
+    from fastapi.responses import RedirectResponse
+    import telemetry
+
+    # Decode the URL (percent-encoded before being passed as query param)
+    real_url = unquote(url)
+
+    # Fire-and-forget Firestore log — never blocks the redirect
+    try:
+        db = telemetry._get_db()
+        if db is not None:
+            from datetime import datetime, timezone
+            asyncio.create_task(
+                db.collection("article_clicks").document().set({
+                    "article_hash": id,
+                    "url": real_url,
+                    "clicked_at": datetime.now(timezone.utc).isoformat(),
+                    "source": "whatsapp",
+                })
+            )
+    except Exception as e:
+        logger.warning("[REDIRECT] Firestore log failed (non-fatal): %s", e)
+
+    return RedirectResponse(url=real_url, status_code=302)
