@@ -119,6 +119,14 @@ const micIndicator = $('micIndicator');
 
 function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+function providerErrorMessage(errors) {
+  const errorText = (errors || []).join(' ');
+  if (/RESOURCE_EXHAUSTED|prepayment credits are depleted|no available credits/i.test(errorText)) {
+    return 'The AI backend is online, but its Gemini project has no available API credits. Ask the project billing owner to restore an available balance, then try again.';
+  }
+  return null;
+}
+
 function addEntry(question, answer, isError, context, latency, tokens, intent, confidence, chain, errors) {
   const div = document.createElement('div');
   div.className = 'entry';
@@ -153,11 +161,10 @@ async function checkBackend() {
       statusText.textContent = 'Backend live · v' + (data.version || '1.x');
       if (data.agents) statusText.textContent += ' · ' + data.agents.length + ' agents';
 
-      try {
-        const testRes = await fetch(ASK_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({image:'test',query:'test'}) });
-        if (testRes.status !== 404) { useMode = 'rest'; apiBadge.textContent = '(REST /ask)'; }
-        else { useMode = 'ws'; apiBadge.textContent = '(WebSocket /ws)'; connectWS(); }
-      } catch(e) { useMode = 'ws'; apiBadge.textContent = '(WebSocket /ws)'; connectWS(); }
+      // This deployed API exposes /ask. Do not send a fake prompt here: it invokes
+      // paid Gemini agents on every page load and cannot validate a real screenshot.
+      useMode = 'rest';
+      apiBadge.textContent = '(REST /ask)';
 
       shareBtn.disabled = false;
     } else if (data.status) {
@@ -245,7 +252,16 @@ async function sendQuery(queryText) {
       });
       const data = await res.json();
       if (res.ok) {
-        loadingEl.remove(); // Remove loading entry, add full entry with metadata
+        const providerError = providerErrorMessage(data.errors);
+        loadingEl.remove();
+        if (providerError) {
+          addEntry(queryText, providerError, true, data.context, data.latency_ms, data.tokens,
+            data.intent, data.confidence, data.agent_chain, data.errors);
+          isProcessing = false;
+          statusDot.className = '';
+          statusText.textContent = 'AI unavailable — Gemini credits needed';
+          return;
+        }
         addEntry(queryText, data.response, false, data.context, data.latency_ms, data.tokens,
           data.intent, data.confidence, data.agent_chain, data.errors);
       } else {
