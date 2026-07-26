@@ -1,111 +1,111 @@
-"""
-Intent Router — Classifies user intent using Gemini structured JSON.
-Determines what kind of help the user needs and routes accordingly.
-Never blocks the pipeline — defaults to GENERAL on any failure.
-"""
-import asyncio
-import json
-import logging
+"""Deterministic intent router with optional provider-backed mode."""
+from __future__ import annotations
 
-from google import genai
-from models import ScreenContext, IntentClassification, IntentType
+import os
+import re
 
-logger = logging.getLogger("omniguide.agents.intent")
+from models import IntentClassification, IntentType, ScreenContext
+from providers import ProviderRouter, sanitize_provider_error
 
-GEMINI_MODEL = "gemini-2.0-flash"
+MODEL_PROMPT = """Classify the request as one of: debug_help, how_to, what_is,
+navigation, code_review, general. Return JSON with intent_type, confidence,
+entities, reasoning_hint. Return only JSON."""
 
-INTENT_PROMPT = """You are an intent classifier. Given a user's question and their screen context, classify the intent.
-
-Return JSON:
-{
-  "intent_type": one of ["debug_help", "how_to", "what_is", "navigation", "code_review", "general"],
-  "confidence": 0.0 to 1.0,
-  "entities": ["key terms from the question"],
-  "reasoning_hint": "one sentence guiding the reasoning agent on approach"
+_HINTS = {
+    IntentType.DEBUG_HELP: "Diagnose the visible failure and give the smallest concrete fix.",
+    IntentType.HOW_TO: "Give exact steps using the visible application and controls.",
+    IntentType.WHAT_IS: "Explain the visible concept or message concisely.",
+    IntentType.NAVIGATION: "Point to the exact visible menu, control, or shortcut.",
+    IntentType.CODE_REVIEW: "Review only code or evidence visible on screen.",
+    IntentType.GENERAL: "Answer directly while staying grounded in visible evidence.",
 }
 
-Definitions:
-- debug_help: User has an error/bug and needs help fixing it
-- how_to: User wants to know how to do something
-- what_is: User is asking what something is or means
-- navigation: User wants to find or navigate to something
-- code_review: User wants code reviewed or improved
-- general: Anything else
-
-Return ONLY valid JSON."""
-
-MAX_RETRIES = 2
+_STOPWORDS = {
+    "the", "and", "that", "this", "with", "from", "what", "where", "when",
+    "how", "does", "doing", "please", "could", "would", "should", "help",
+}
 
 
 class IntentRouter:
-    def __init__(self, client: genai.Client):
-        self.client = client
+    def __init__(self, router: ProviderRouter):
+        self.router = router
+        self.mode = os.getenv("INTENT_ROUTER_MODE", "deterministic").strip().lower()
 
-    def _sync_classify(self, query: str, context: ScreenContext) -> tuple:
-        prompt = f"""{INTENT_PROMPT}
+    @staticmethod
+    def _entities(query: str) -> list[str]:
+        words = re.findall(r"[A-Za-z0-9_.-]{3,}", query)
+        output: list[str] = []
+        for word in words:
+            if word.lower() in _STOPWORDS or word.lower() in {w.lower() for w in output}:
+                continue
+            output.append(word)
+            if len(output) == 8:
+                break
+        return output
 
-USER QUESTION: "{query}"
-SCREEN CONTEXT: app={context.app}, task={context.task}, focus={context.focus}
-VISIBLE TEXT: {context.visible_text[:300]}"""
-
-        response = self.client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json",
-                "temperature": 0.0,
-            }
+    @staticmethod
+    def _deterministic(query: str) -> IntentClassification:
+        q = query.lower().strip()
+        patterns = [
+            (IntentType.CODE_REVIEW, r"\b(review|refactor|optimi[sz]e|code quality|improve this code)\b"),
+            (IntentType.DEBUG_HELP, r"\b(error|bug|crash|failed|failing|doesn.?t work|not working|fix|traceback|exception|404|500)\b"),
+            (IntentType.NAVIGATION, r"\b(where|find|navigate|which menu|which button|click|open settings)\b"),
+            (IntentType.WHAT_IS, r"^(what is|what does|what are|why is|meaning of)\b"),
+            (IntentType.HOW_TO, r"^(how do|how can|how to|steps to)\b"),
+        ]
+        selected = IntentType.GENERAL
+        confidence = 0.62
+        for intent, pattern in patterns:
+            if re.search(pattern, q):
+                selected = intent
+                confidence = 0.9
+                break
+        return IntentClassification(
+            intent_type=selected,
+            confidence=confidence,
+            entities=IntentRouter._entities(query),
+            reasoning_hint=_HINTS[selected],
         )
 
-        raw = response.text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-        if raw.endswith("```"):
-            raw = raw.rsplit("```", 1)[0]
-
-        data = json.loads(raw)
-        tokens = getattr(response.usage_metadata, "total_token_count", 0) if response.usage_metadata else 0
-
-        # Parse intent type with fallback
-        try:
-            intent = IntentType(data.get("intent_type", "general"))
-        except ValueError:
-            intent = IntentType.GENERAL
-
-        return IntentClassification(
-            intent_type=intent,
-            confidence=float(data.get("confidence", 0.5)),
-            entities=data.get("entities", []),
-            reasoning_hint=data.get("reasoning_hint", "")
-        ), tokens
-
     async def classify(self, query: str, context: ScreenContext) -> tuple:
-        """
-        Returns (IntentClassification, token_count, error_or_None)
-        Retries up to MAX_RETRIES on failure, then falls back to GENERAL.
-        """
-        last_error = None
+        if self.mode != "model":
+            result = self._deterministic(query)
+            trace = {
+                "stage": "intent", "status": "ok", "provider": "deterministic",
+                "model": "semantic_rules_v1", "tokens": 0,
+            }
+            return result, 0, None, trace
 
-        for attempt in range(MAX_RETRIES + 1):
+        try:
+            provider_result = await self.router.generate_json(
+                system_prompt="You are OmniGuide's intent router.",
+                user_prompt=(
+                    f"{MODEL_PROMPT}\nQUERY: {query}\nAPP: {context.app}\n"
+                    f"TASK: {context.task}\nFOCUS: {context.focus}"
+                ),
+            )
+            data = provider_result.data or {}
             try:
-                result, tokens = await asyncio.to_thread(self._sync_classify, query, context)
-                logger.info(
-                    "Intent: type=%s confidence=%.2f entities=%s attempt=%d",
-                    result.intent_type, result.confidence, result.entities, attempt
-                )
-                return result, tokens, None
-
-            except Exception as e:
-                last_error = f"{type(e).__name__}: {str(e)[:150]}"
-                logger.warning("Intent classify attempt %d failed: %s", attempt + 1, last_error)
-                if attempt < MAX_RETRIES:
-                    await asyncio.sleep(0.5 * (attempt + 1))  # Brief backoff
-
-        # Graceful fallback — never block the pipeline
-        logger.error("Intent router exhausted retries, falling back to GENERAL")
-        return IntentClassification(
-            intent_type=IntentType.GENERAL,
-            confidence=0.0,
-            entities=[],
-            reasoning_hint="Classification failed — provide best-effort general help"
-        ), 0, last_error
+                intent = IntentType(str(data.get("intent_type", "general")))
+            except ValueError:
+                intent = IntentType.GENERAL
+            result = IntentClassification(
+                intent_type=intent,
+                confidence=max(0.0, min(1.0, float(data.get("confidence", 0.5)))),
+                entities=[str(item)[:80] for item in (data.get("entities") or [])[:8]],
+                reasoning_hint=str(data.get("reasoning_hint") or _HINTS[intent])[:240],
+            )
+            trace = {
+                "stage": "intent", "status": "ok", "provider": provider_result.provider,
+                "model": provider_result.model, "tokens": provider_result.tokens,
+                "attempts": provider_result.attempts,
+            }
+            return result, provider_result.tokens, None, trace
+        except Exception as exc:
+            error = sanitize_provider_error(exc)
+            result = self._deterministic(query)
+            trace = {
+                "stage": "intent", "status": "fallback", "provider": "deterministic",
+                "model": "semantic_rules_v1", "tokens": 0, "error": error,
+            }
+            return result, 0, error, trace
