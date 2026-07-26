@@ -1,137 +1,157 @@
-# OmniGuide — Real-Time Multimodal AI Screen Co-Pilot
+# OmniGuide — Provider-Independent Screen Co-Pilot
 
-> An AI agent that sees your screen, hears your question, and tells you exactly what to do — in real time.
+> A real-time agent that observes a shared screen, extracts evidence, classifies intent, and returns a verified answer.
 
-## 🔗 Live Demo
-**Frontend:** https://slowskibhere.github.io/Omniguide/omniguide.html
-**Backend Health Check:** https://omniguide-backend-973581476293.us-central1.run.app/health
+## Live endpoints
 
-## 🧠 Architecture (v2.0.0 — Multi-Agent Pipeline)
+- Frontend: `https://slowskibhere.github.io/Omniguide/omniguide.html`
+- Backend health: `https://omniguide-backend-973581476293.us-central1.run.app/health`
+
+## Architecture — v2.1
 
 ```text
-Browser (Screen Capture + Voice/Text Input)
-    ↓ POST /ask (base64 JPEG + query string)
-Cloud Run — FastAPI Backend
-    ↓
-    ├─ Vision Agent (Gemini 2.0 Flash)
-    │   → Structured JSON: { app, task, focus, confidence }
-    ├─ OCR Agent (Gemini 2.0 Flash, parallel)
-    │   → Extracts visible text from screenshot
-    ↓
-Context Builder
-    → Merges Vision + OCR into unified ScreenContext
-    ↓
-Intent Router (Gemini structured JSON)
-    → Classifies: debug_help | how_to | what_is | navigation | code_review | general
-    → Extracts entities + reasoning hint
-    ↓
-Reasoning Agent (Gemini 2.0 Flash)
-    → Intent-specific prompt strategy
-    → Retry logic (2 retries with backoff)
-    → Graceful fallback with visible text if all retries fail
-    ↓
-Response Agent
-    → Formats output with metadata (intent, confidence, agent chain, errors)
-    ↓
-Firestore — agent_telemetry (async, non-blocking)
-    ↓
-Browser — displays response with agent chain badges
+Browser screen capture + question
+              ↓
+        FastAPI /ask
+              ↓
+      Provider Router
+  ┌───────────┴────────────┐
+  │ OpenAI-compatible      │ primary/default seam
+  │ Gemini                 │ optional fallback
+  └───────────┬────────────┘
+              ↓
+   Vision + OCR in parallel
+              ↓
+ Grounding/Evidence Contract
+      no evidence → HTTP 503
+              ↓
+ Deterministic Intent Router
+              ↓
+   Grounded Reasoning Agent
+              ↓
+ Verified Response + Traces
+              ↓
+ Optional Firestore telemetry
 ```
 
-## 🛠 Stack
-- AI: Google GenAI SDK + Gemini 2.0 Flash
-- Backend: Python FastAPI on Google Cloud Run
-- Database: Google Firestore (async, non-blocking telemetry)
-- Frontend: Single HTML file (no frameworks, native Web APIs)
-- Communication: REST POST /ask (preferred) + WebSocket /ws (backward compat)
+### Core invariant
 
-## 📁 Project Structure
+OmniGuide does not return a successful screen-aware answer unless at least one observation stage produces usable evidence and the reasoning stage completes. When providers are unavailable or exhausted, `/ask` returns HTTP 503 with `verified: false` instead of generating a plausible but ungrounded response.
 
-```
-main.py          — FastAPI server, pipeline orchestration
-models.py        — Pydantic data models (ScreenContext, IntentClassification, AgentResponse)
-agents/
-  __init__.py    — Package exports
-  vision.py      — Vision Agent (screenshot → structured JSON context)
-  ocr.py         — OCR Agent (screenshot → extracted text)
-  context.py     — Context Builder (merges vision + OCR in parallel)
-  intent.py      — Intent Router (query → classified intent with retries)
-  reasoning.py   — Reasoning Agent (intent-specific response generation)
-  response.py    — Response Agent (output formatting + metadata)
-telemetry.py     — Firestore logging (async, never blocks pipeline)
-omniguide.html   — Frontend (screen capture, voice, text, agent chain display)
-Dockerfile       — Cloud Run container config
-requirements.txt — Python dependencies
+## Provider independence
+
+The agents no longer import or instantiate Gemini directly. They depend on `ProviderRouter`, which supports ordered failover.
+
+Default order:
+
+```env
+MODEL_PROVIDER_ORDER=openai_compatible,gemini
 ```
 
-## 🔑 Key Improvements (v1.x → v2.0.0)
+The OpenAI-compatible adapter works with hosted or local endpoints that implement the Chat Completions multimodal contract, including OpenRouter, OpenAI-compatible gateways, LM Studio, and vLLM deployments. The selected vision model must support image input.
 
-1. **Modular multi-agent architecture** — 6 agents with clear interfaces
-2. **Structured JSON output** — Replaces brittle "APP: X / TASK: Y / FOCUS: Z" text parser
-3. **Graceful fallbacks** — Never returns all-"Unknown"; uses "unidentified" + confidence scores
-4. **Parallel execution** — Vision + OCR run concurrently via asyncio.gather
-5. **Retry logic** — Intent and Reasoning agents retry with backoff before falling back
-6. **Intent-aware prompting** — 6 intent types with specialized system prompts
-7. **REST + WebSocket** — REST /ask preferred for Cloud Run reliability
-8. **Rich telemetry** — Agent chain, error list, confidence scores in every response
-9. **Non-blocking telemetry** — Firestore failures never crash the pipeline
+Gemini remains available as an optional fallback and is not required by the application architecture.
 
-## 💻 Run Locally
+## Agent pipeline
+
+1. **Vision Agent** — produces structured application, task, focus, visible-text, and confidence evidence.
+2. **OCR Agent** — independently extracts literal screen text.
+3. **Context Builder** — merges successful evidence and sets the `grounded` contract.
+4. **Intent Router** — deterministic by default, avoiding a model call for simple classification.
+5. **Reasoning Agent** — runs only when screen grounding succeeded.
+6. **Response Agent** — marks output as verified only when both grounding and reasoning completed.
+
+Every result includes `run_id`, `status`, `grounded`, `verified`, provider/model provenance, agent chain, errors, and stage traces.
+
+## Local setup
 
 ```bash
+python -m venv .venv
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-export GEMINI_API_KEY=your_key_here
+copy .env.example .env
 uvicorn main:app --host 0.0.0.0 --port 8080
-# Serve frontend separately:
-python -m http.server 8000
-# Open: http://localhost:8000/omniguide.html
 ```
 
-## ☁️ Deploy to Cloud Run
+Configure at least one complete multimodal provider:
+
+```env
+OPENAI_COMPAT_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_COMPAT_API_KEY=your_key
+OPENAI_COMPAT_VISION_MODEL=openai/gpt-4o-mini
+OPENAI_COMPAT_TEXT_MODEL=openai/gpt-4o-mini
+```
+
+Or use Gemini only:
+
+```env
+MODEL_PROVIDER_ORDER=gemini
+GEMINI_API_KEY=your_key
+GEMINI_VISION_MODEL=gemini-2.0-flash
+GEMINI_TEXT_MODEL=gemini-2.0-flash
+```
+
+No real keys belong in Git. `.env`, `.env.yaml`, and key files are ignored.
+
+## Tests
 
 ```bash
-gcloud services enable aiplatform.googleapis.com run.googleapis.com firestore.googleapis.com
-
-gcloud run deploy omniguide-backend \
-  --source . \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --port 8080 \
-  --session-affinity \
-  --set-env-vars GEMINI_API_KEY=your_key_here
+python -m compileall -q .
+python -m unittest discover -s tests -v
 ```
 
-## 📡 API Endpoints
+The regression suite verifies:
 
-### GET /health
-Returns backend status, version, and configured agents.
+- provider failover
+- deterministic intent routing without a model call
+- failed observation stages do not count as grounding
+- reasoning cannot run without screen evidence
+- unverified model-like text is discarded
+- `/ask` returns HTTP 503 rather than a fake answer when no provider is configured
 
-### POST /ask
+## Health response
+
+`GET /health` reports provider readiness without exposing keys:
+
 ```json
-Request: { "image": "<base64 JPEG>", "query": "How do I fix this error?" }
-Response: {
-  "response": "The TypeError on line 24 means...",
-  "context": "APP: VS Code / TASK: debugging / FOCUS: error on line 24",
-  "intent": "debug_help",
-  "confidence": 0.85,
-  "latency_ms": 1840.5,
-  "tokens": 1240,
-  "errors": [],
-  "agent_chain": ["vision", "ocr", "intent", "reasoning"],
-  "version": "2.0.0"
+{
+  "status": "OmniGuide is live",
+  "version": "2.1.0",
+  "model_available": true,
+  "vision_available": true,
+  "text_available": true,
+  "provider_order": ["openai_compatible", "gemini"],
+  "execution_contract": "screen_grounded_only"
 }
 ```
 
-### WS /ws
-WebSocket endpoint (backward compatible). Same response format.
+## API
 
-## 🎯 Intent Types
+### `POST /ask`
 
-| Type | Description | Example Query |
-|------|-------------|---------------|
-| debug_help | Fixing errors/bugs | "Why is this crashing?" |
-| how_to | Learning to do something | "How do I add a navbar?" |
-| what_is | Understanding concepts | "What does this error mean?" |
-| navigation | Finding UI elements | "Where is the settings page?" |
-| code_review | Improving code | "Review this function" |
-| general | Anything else | "What should I do next?" |
+Request:
+
+```json
+{"image": "<base64 JPEG>", "query": "How do I fix this error?"}
+```
+
+Verified success returns HTTP 200. Missing grounding or a failed reasoning provider returns HTTP 503 with `verified: false` and a safe error message.
+
+### `WS /ws`
+
+Backward-compatible WebSocket transport using the same pipeline and response contract.
+
+### `GET /r`
+
+Validated HTTP/HTTPS click-tracking redirect with optional non-blocking Firestore logging.
+
+## Deployment
+
+Cloud Run needs the provider variables from `.env.example`. For an OpenAI-compatible primary with Gemini fallback, set both sets of keys and keep:
+
+```env
+MODEL_PROVIDER_ORDER=openai_compatible,gemini
+```
+
+For a local provider, point `OPENAI_COMPAT_BASE_URL` at the reachable gateway. A Cloud Run container cannot reach an LM Studio server bound only to a developer laptop’s `127.0.0.1`.
