@@ -61,6 +61,20 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second.calls, 1)
         self.assertTrue(result.attempts)
 
+    async def test_provider_router_falls_through_on_invalid_json(self):
+        first = FakeProvider("first", result="not JSON")
+        second = FakeProvider("second", result='{"answer": "grounded"}')
+        router = ProviderRouter([first, second])
+        result = await router.generate_json(system_prompt="s", user_prompt="u")
+        self.assertEqual(result.provider, "second")
+        self.assertEqual(result.data, {"answer": "grounded"})
+        self.assertEqual(first.calls, 1)
+        self.assertEqual(second.calls, 1)
+        self.assertEqual(
+            result.attempts,
+            ["first: Provider returned non-JSON output"],
+        )
+
     async def test_context_is_not_grounded_when_evidence_agents_fail(self):
         builder = ContextBuilder(FailingVision(), FailingOCR())
         context, _, errors, chain, _ = await builder.build("abc")
@@ -108,6 +122,21 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "unavailable")
         self.assertNotIn("plausible but ungrounded", result["response"])
 
+    async def test_unverified_response_confidence_is_zero(self):
+        result = ResponseAgent.build(
+            run_id="r2",
+            response_text="plausible but unverified model answer",
+            context=ScreenContext(grounded=True, confidence=0.98),
+            intent=IntentClassification(confidence=0.99),
+            latency_ms=1,
+            tokens=7,
+            errors=["reasoning failed"],
+            agent_chain=["vision", "intent"],
+            traces=[{"stage": "reasoning", "status": "error"}],
+        )
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["confidence"], 0.0)
+
 
 class ApiTests(unittest.TestCase):
     @classmethod
@@ -121,6 +150,7 @@ class ApiTests(unittest.TestCase):
     def test_health_reports_no_provider_without_keys(self):
         data = self.client.get("/health").json()
         self.assertFalse(data["model_available"])
+        self.assertFalse(data["provider_ready"])
         self.assertFalse(data["gemini_key_configured"])
         self.assertEqual(data["execution_contract"], "screen_grounded_only")
 

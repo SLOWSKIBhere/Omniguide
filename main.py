@@ -102,11 +102,17 @@ async def health():
     vision_available = model_router.has_available_provider(vision=True)
     text_available = model_router.has_available_provider(vision=False)
     providers = model_router.describe()
+    provider_ready = vision_available and text_available
+    gemini_configured = any(
+        item["name"] == "gemini" and item.get("configured", False)
+        for item in providers
+    )
     return JSONResponse({
         "status": "OmniGuide is live",
         "version": VERSION,
-        "model_available": vision_available and text_available,
-        "gemini_key_configured": vision_available and text_available,
+        "model_available": provider_ready,
+        "provider_ready": provider_ready,
+        "gemini_key_configured": gemini_configured,
         "vision_available": vision_available,
         "text_available": text_available,
         "providers": providers,
