@@ -1,10 +1,8 @@
-"""
-OmniGuide v2.0.0 — Data Models
-Structured models for the multi-agent pipeline.
-"""
-from pydantic import BaseModel, Field
-from typing import Optional, List
+"""OmniGuide v2.1 data contracts."""
 from enum import Enum
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class IntentType(str, Enum):
@@ -16,37 +14,53 @@ class IntentType(str, Enum):
     GENERAL = "general"
 
 
+class StageTrace(BaseModel):
+    stage: str
+    status: str
+    provider: str = ""
+    model: str = ""
+    tokens: int = 0
+    error: Optional[str] = None
+    attempts: List[str] = Field(default_factory=list)
+
+
 class ScreenContext(BaseModel):
-    """Structured screen analysis from Vision + OCR agents."""
-    app: str = Field(default="Unknown", description="Application visible on screen")
-    task: str = Field(default="Unknown", description="What the user appears to be doing")
-    focus: str = Field(default="Unknown", description="Main UI element in focus")
-    visible_text: str = Field(default="", description="Key text extracted from screen")
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence score 0-1")
-    source: str = Field(default="gemini", description="Which agent produced this context")
+    app: str = "unidentified"
+    task: str = "unidentified"
+    focus: str = "unidentified"
+    visible_text: str = ""
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    source: str = "context_builder"
+    grounded: bool = False
+    evidence: List[str] = Field(default_factory=list)
 
 
 class IntentClassification(BaseModel):
-    """User intent classification from the Intent Router."""
-    intent_type: IntentType = Field(default=IntentType.GENERAL)
+    intent_type: IntentType = IntentType.GENERAL
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    entities: List[str] = Field(default_factory=list, description="Key entities extracted from query")
-    reasoning_hint: str = Field(default="", description="Hint for the reasoning agent")
+    entities: List[str] = Field(default_factory=list)
+    reasoning_hint: str = ""
 
 
 class AgentResponse(BaseModel):
-    """Final response from the pipeline."""
     response: str
     context: str
     intent: str
     confidence: float
     latency_ms: float
     tokens: int
+    status: str
+    grounded: bool
+    verified: bool
+    run_id: str
+    provider: Optional[str] = None
+    model: Optional[str] = None
     errors: List[str] = Field(default_factory=list)
-    agent_chain: List[str] = Field(default_factory=list, description="Which agents ran successfully")
+    agent_chain: List[str] = Field(default_factory=list)
+    traces: List[StageTrace] = Field(default_factory=list)
+    version: str = "2.1.0"
 
 
 class AskRequest(BaseModel):
-    """REST API request model."""
-    image: str
-    query: str
+    image: str = Field(min_length=1, max_length=10_000_000)
+    query: str = Field(min_length=1, max_length=4_000)
