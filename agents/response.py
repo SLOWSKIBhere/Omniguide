@@ -55,11 +55,12 @@ class ResponseAgent:
 
         provider = reasoning_trace.get("provider") if reasoning_trace else None
         model = reasoning_trace.get("model") if reasoning_trace else None
+        confidence = round(max(context.confidence, intent.confidence), 2) if verified else 0.0
         return {
             "response": response,
             "context": ResponseAgent.format_context(context),
             "intent": intent.intent_type.value,
-            "confidence": round(max(context.confidence, intent.confidence), 2),
+            "confidence": confidence,
             "latency_ms": round(latency_ms, 2),
             "tokens": tokens,
             "status": status,

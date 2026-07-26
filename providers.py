@@ -323,11 +323,30 @@ class ProviderRouter:
         user_prompt: str,
         image_base64: Optional[str] = None,
     ) -> ProviderResult:
-        result = await self.generate_text(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            image_base64=image_base64,
-            json_mode=True,
-        )
-        result.data = parse_json_object(result.text)
-        return result
+        vision = image_base64 is not None
+        attempts: list[str] = []
+        configured = False
+        for provider in self.providers:
+            if not provider.available_for(vision=vision):
+                continue
+            configured = True
+            try:
+                result = await provider.generate_text(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    image_base64=image_base64,
+                    json_mode=True,
+                )
+                result.data = parse_json_object(result.text)
+                result.attempts = attempts
+                return result
+            except Exception as exc:
+                safe = sanitize_provider_error(exc)
+                attempts.append(f"{provider.name}: {safe}")
+                logger.warning("Provider %s failed: %s", provider.name, safe)
+
+        if not configured:
+            raise ProviderUnavailableError(
+                "No compatible model provider is configured. Set OPENAI_COMPAT_API_KEY or GEMINI_API_KEY."
+            )
+        raise ProviderCallError("All configured providers failed: " + " | ".join(attempts))
