@@ -13,12 +13,21 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
+from importlib import import_module
 from typing import Any, Iterable, Optional
 
 import httpx
 from PIL import Image
 
 logger = logging.getLogger("omniguide.providers")
+
+
+def _google_genai_dependency_ready() -> bool:
+    try:
+        import_module("google.genai")
+    except Exception:
+        return False
+    return True
 
 
 class ProviderError(RuntimeError):
@@ -195,14 +204,17 @@ class GeminiProvider:
         self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
         self.text_model = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.0-flash").strip()
         self.vision_model = os.getenv("GEMINI_VISION_MODEL", self.text_model).strip()
+        self.dependency_ready = _google_genai_dependency_ready()
 
     def available_for(self, *, vision: bool) -> bool:
-        return bool(self.api_key and (self.vision_model if vision else self.text_model))
+        model = self.vision_model if vision else self.text_model
+        return bool(self.dependency_ready and self.api_key and model)
 
     def describe(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "configured": bool(self.api_key),
+            "dependency_ready": self.dependency_ready,
             "vision_model": self.vision_model or None,
             "text_model": self.text_model or None,
         }

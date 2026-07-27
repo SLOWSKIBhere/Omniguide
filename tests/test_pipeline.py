@@ -2,6 +2,7 @@ import base64
 import io
 import os
 import unittest
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -153,6 +154,37 @@ class ApiTests(unittest.TestCase):
         self.assertFalse(data["provider_ready"])
         self.assertFalse(data["gemini_key_configured"])
         self.assertEqual(data["execution_contract"], "screen_grounded_only")
+
+    def test_health_rejects_gemini_without_runtime_dependency(self):
+        with patch.dict(
+            os.environ,
+            {
+                "MODEL_PROVIDER_ORDER": "gemini",
+                "GEMINI_API_KEY": "configured-test-placeholder",
+                "GEMINI_TEXT_MODEL": "gemini-test-model",
+                "GEMINI_VISION_MODEL": "gemini-test-model",
+            },
+            clear=False,
+        ):
+            with patch(
+                "providers.import_module",
+                side_effect=ImportError("simulated unavailable google-genai"),
+            ):
+                router = ProviderRouter()
+            with patch("main.model_router", router):
+                data = self.client.get("/health").json()
+
+        self.assertEqual(data["provider_order"], ["gemini"])
+        self.assertFalse(data["model_available"])
+        self.assertFalse(data["provider_ready"])
+        self.assertFalse(data["vision_available"])
+        self.assertFalse(data["text_available"])
+        self.assertTrue(data["gemini_key_configured"])
+        self.assertEqual(len(data["providers"]), 1)
+        gemini = data["providers"][0]
+        self.assertEqual(gemini["name"], "gemini")
+        self.assertTrue(gemini["configured"])
+        self.assertFalse(gemini["dependency_ready"])
 
     def test_ask_returns_503_instead_of_fake_answer(self):
         image = Image.new("RGB", (40, 40), "white")
