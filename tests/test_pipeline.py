@@ -2,6 +2,7 @@ import base64
 import io
 import os
 import unittest
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -10,7 +11,29 @@ from agents.intent import IntentRouter
 from agents.reasoning import ReasoningAgent
 from agents.response import ResponseAgent
 from models import IntentClassification, ScreenContext
-from providers import ProviderCallError, ProviderResult, ProviderRouter
+from providers import (
+    GeminiProvider,
+    OpenAICompatibleProvider,
+    ProviderCallError,
+    ProviderResult,
+    ProviderRouter,
+    ProviderUnavailableError,
+)
+
+
+# The prod code correctly derives "dependency ready" from whether
+# google.genai is importable (providers.py:229-235). But requirements.txt
+# pins google-genai>=1.0.0, so it IS importable in this test/CI env — these
+# tests must mock the missing-dependency state instead of assuming it.
+def _mock_missing_google_genai():
+    return (
+        patch.object(GeminiProvider, "dependency_ready", return_value=False),
+        patch.object(
+            GeminiProvider,
+            "_sync_generate",
+            side_effect=ProviderUnavailableError("google-genai is not installed"),
+        ),
+    )
 
 
 class FakeProvider:
@@ -145,7 +168,21 @@ class ApiTests(unittest.TestCase):
         os.environ.pop("GEMINI_API_KEY", None)
         from fastapi.testclient import TestClient
         import main
+        importlib = __import__("importlib")
+        # The health endpoint consults Provider.dependency_ready at import time.
+        # Patch GeminiProvider.dependency_ready to simulate a missing google-genai
+        # dependency so CI doesn't require google-genai to be installed.
+        cls._patcher = patch.object(
+            __import__("providers", fromlist=["GeminiProvider"]).GeminiProvider,
+            "dependency_ready",
+            return_value=False,
+        )
+        cls._patcher.start()
         cls.client = TestClient(main.app)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._patcher.stop()
 
     def test_health_reports_no_provider_without_keys(self):
         data = self.client.get("/health").json()
