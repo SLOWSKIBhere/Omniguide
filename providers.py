@@ -91,13 +91,39 @@ class OpenAICompatibleProvider:
         self.site_url = os.getenv("OPENAI_COMPAT_SITE_URL", "").strip()
         self.app_name = os.getenv("OPENAI_COMPAT_APP_NAME", "OmniGuide").strip()
 
+    def is_configured(self) -> bool:
+        """Has credentials — independent of whether a model is set for a given modality."""
+        return bool(self.api_key)
+
+    def dependency_ready(self) -> bool:
+        """Whether the runtime libraries this provider needs are importable.
+
+        httpx is a hard, module-level import for this file, so if it were
+        missing the app would already have failed to start. Always True here.
+        """
+        return True
+
+    def configured_for(self, *, vision: bool) -> bool:
+        """Has credentials AND a model configured for this modality.
+
+        Deliberately does NOT check dependency_ready() — this is used by the
+        router to decide whether to *attempt* a call, so a missing runtime
+        dependency still surfaces its specific error instead of being
+        mistaken for "not configured".
+        """
+        return self.is_configured() and bool(self.vision_model if vision else self.text_model)
+
     def available_for(self, *, vision: bool) -> bool:
-        return bool(self.api_key and (self.vision_model if vision else self.text_model))
+        """Fully usable right now: configured AND its dependency is ready."""
+        return self.configured_for(vision=vision) and self.dependency_ready()
 
     def describe(self) -> dict[str, Any]:
+        dep_ready = self.dependency_ready()
         return {
             "name": self.name,
-            "configured": bool(self.api_key),
+            "configured": self.is_configured(),
+            "dependency_ready": dep_ready,
+            "available": self.is_configured() and dep_ready,
             "vision_model": self.vision_model or None,
             "text_model": self.text_model or None,
         }
@@ -196,13 +222,41 @@ class GeminiProvider:
         self.text_model = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.0-flash").strip()
         self.vision_model = os.getenv("GEMINI_VISION_MODEL", self.text_model).strip()
 
+    def is_configured(self) -> bool:
+        """Has an API key — independent of whether the SDK is installed."""
+        return bool(self.api_key)
+
+    def dependency_ready(self) -> bool:
+        """Whether google-genai is actually importable in this runtime."""
+        try:
+            from google import genai  # noqa: F401
+        except ImportError:
+            return False
+        return True
+
+    def configured_for(self, *, vision: bool) -> bool:
+        """Has credentials AND a model configured for this modality.
+
+        Deliberately does NOT check dependency_ready(): the router uses this
+        to decide whether to attempt a call at all. If we gated on the SDK
+        being installed here, a configured-but-uninstalled Gemini would look
+        identical to "no key set at all" to the router, and the caller would
+        see the generic "Set OPENAI_COMPAT_API_KEY or GEMINI_API_KEY" message
+        instead of the true, specific "google-genai is not installed" reason.
+        """
+        return self.is_configured() and bool(self.vision_model if vision else self.text_model)
+
     def available_for(self, *, vision: bool) -> bool:
-        return bool(self.api_key and (self.vision_model if vision else self.text_model))
+        """Fully usable right now: configured AND the SDK is importable."""
+        return self.configured_for(vision=vision) and self.dependency_ready()
 
     def describe(self) -> dict[str, Any]:
+        dep_ready = self.dependency_ready()
         return {
             "name": self.name,
-            "configured": bool(self.api_key),
+            "configured": self.is_configured(),
+            "dependency_ready": dep_ready,
+            "available": self.is_configured() and dep_ready,
             "vision_model": self.vision_model or None,
             "text_model": self.text_model or None,
         }
@@ -246,7 +300,7 @@ class GeminiProvider:
         image_base64: Optional[str] = None,
         json_mode: bool = False,
     ) -> ProviderResult:
-        if not self.available_for(vision=image_base64 is not None):
+        if not self.configured_for(vision=image_base64 is not None):
             raise ProviderUnavailableError(f"{self.name} is not configured")
         return await asyncio.to_thread(
             self._sync_generate,
@@ -293,7 +347,12 @@ class ProviderRouter:
         attempts: list[str] = []
         configured = False
         for provider in self.providers:
-            if not provider.available_for(vision=vision):
+            # Gate on configured_for (credentials present), not available_for
+            # (which also requires the runtime dependency to be importable).
+            # This way a configured-but-dependency-missing provider is still
+            # attempted, its specific failure reason is recorded in attempts,
+            # and failover to the next provider is unaffected.
+            if not provider.configured_for(vision=vision):
                 continue
             configured = True
             try:
@@ -327,7 +386,10 @@ class ProviderRouter:
         attempts: list[str] = []
         configured = False
         for provider in self.providers:
-            if not provider.available_for(vision=vision):
+            # See generate_text() above: gate on configured_for, not
+            # available_for, so a missing runtime dependency still yields
+            # its specific error instead of the generic "not configured" one.
+            if not provider.configured_for(vision=vision):
                 continue
             configured = True
             try:
