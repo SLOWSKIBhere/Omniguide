@@ -27,7 +27,7 @@ from providers import (
 # tests must mock the missing-dependency state instead of assuming it.
 def _mock_missing_google_genai():
     return (
-        patch.object(GeminiProvider, "dependency_ready", return_value=False),
+        patch.object(GeminiProvider, "dependency_ready", return_value=False, create=True),
         patch.object(
             GeminiProvider,
             "_sync_generate",
@@ -176,6 +176,7 @@ class ApiTests(unittest.TestCase):
             __import__("providers", fromlist=["GeminiProvider"]).GeminiProvider,
             "dependency_ready",
             return_value=False,
+            create=True,
         )
         cls._patcher.start()
         cls.client = TestClient(main.app)
