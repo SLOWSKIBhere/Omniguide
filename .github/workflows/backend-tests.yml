@@ -2,8 +2,11 @@ name: Backend tests
 
 on:
   pull_request:
-  push:
-    branches: [main]
+
+# NOTE: Push-triggered backend tests were removed to avoid running CI on direct pushes
+# (e.g., automated audits or bot accounts). To re-enable push-triggered tests, add:
+# push:
+#   branches: [main]
 
 permissions:
   contents: read
