@@ -1,0 +1,64 @@
+name: Deploy OmniGuide frontend to Pages
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "omniguide.html"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "omniguide.html"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Pages artifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Prepare static site
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s omniguide.html
+          mkdir -p _site
+          cp omniguide.html _site/index.html
+          cp omniguide.html _site/omniguide.html
+          test -s _site/index.html
+          test -s _site/omniguide.html
+          test "$(find _site -type f | wc -l)" -eq 2
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy Pages
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
