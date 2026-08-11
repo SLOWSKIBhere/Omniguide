@@ -5,97 +5,467 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>OmniGuide — AI Screen Co-Pilot</title>
 <style>
-  :root { --bg:#0a0a0f; --card:#13131c; --border:#252535; --text:#e8e8f0; --muted:#8888a0; --accent:#6c5ce7; --green:#2ecc71; --red:#e74c3c; --amber:#f39c12; }
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; min-height:100vh; padding:20px; }
-  .wrap { max-width:800px; margin:0 auto; }
-  .header { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
-  .logo { width:40px; height:40px; border-radius:10px; background:linear-gradient(135deg,#6c5ce7,#a29bfe); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
-  h1 { font-size:22px; font-weight:700; }
-  .version { font-size:12px; color:var(--muted); background:var(--card); padding:2px 8px; border-radius:6px; border:1px solid var(--border); }
-  .tagline { color:var(--muted); font-size:14px; margin-bottom:24px; }
-  #statusBar { display:flex; align-items:center; gap:8px; padding:12px 16px; background:var(--card); border:1px solid var(--border); border-radius:12px; margin-bottom:16px; font-size:14px; flex-wrap:wrap; }
-  #statusDot { width:10px; height:10px; border-radius:50%; background:var(--red); transition:0.3s; flex-shrink:0; }
-  #statusDot.live { background:var(--green); box-shadow:0 0 8px var(--green); }
-  #statusDot.loading { background:var(--amber); animation:pulse 1s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  .controls { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
-  button { background:var(--accent); color:#fff; border:none; padding:12px 20px; border-radius:10px; font-size:14px; cursor:pointer; font-weight:600; transition:0.2s; display:flex; align-items:center; gap:8px; }
-  button:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 4px 12px rgba(108,92,231,0.3); }
-  button:disabled { background:#2a2a3a; color:#555; cursor:not-allowed; }
-  button.secondary { background:transparent; border:1px solid var(--border); color:var(--text); }
-  button.secondary:hover:not(:disabled) { border-color:var(--accent); }
-  button.danger { background:var(--red); }
-  #previewContainer { position:relative; margin-bottom:16px; border-radius:14px; overflow:hidden; background:#000; display:none; }
-  #previewContainer.active { display:block; }
-  #preview { width:100%; display:block; }
-  .preview-label { position:absolute; top:12px; left:12px; background:rgba(0,0,0,0.7); color:var(--green); padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; }
-  .inputRow { display:flex; gap:10px; margin-bottom:16px; }
-  input[type=text] { flex:1; padding:14px 16px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:15px; outline:none; transition:0.2s; }
-  input[type=text]:focus { border-color:var(--accent); }
-  input[type=text]:disabled { opacity:0.4; }
-  #log { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; min-height:200px; max-height:500px; overflow-y:auto; }
-  .entry { margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid var(--border); }
-  .entry:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
-  .entry-header { display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
-  .entry-q { color:var(--accent); font-size:13px; font-weight:600; }
-  .entry-time { color:var(--muted); font-size:11px; margin-left:auto; }
-  .entry-context { color:var(--muted); font-size:12px; margin-bottom:6px; font-family:monospace; background:var(--bg); padding:6px 10px; border-radius:6px; }
-  .entry-meta { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; }
-  .meta-badge { font-size:10px; padding:2px 8px; border-radius:4px; font-weight:600; }
-  .meta-intent { background:#1a1a2e; color:var(--accent); border:1px solid var(--accent); }
-  .meta-conf { background:#0d1f0d; color:var(--green); }
-  .meta-chain { background:#1a1a0d; color:var(--amber); }
-  .meta-error { background:#2d0d0d; color:var(--red); }
-  .entry-a { color:var(--text); font-size:14px; line-height:1.6; }
-  .entry-error { color:var(--red); }
-  .entry-system { color:var(--green); font-size:13px; }
-  #micIndicator { display:none; position:fixed; bottom:30px; right:30px; background:var(--red); color:#fff; padding:14px 20px; border-radius:30px; font-size:14px; font-weight:600; box-shadow:0 4px 20px rgba(231,76,60,0.4); z-index:100; }
-  #micIndicator.active { display:flex; align-items:center; gap:8px; }
-  .footer { text-align:center; color:var(--muted); font-size:12px; margin-top:24px; }
+  :root {
+    color-scheme: dark;
+    --bg:#080c12;
+    --surface:#101720;
+    --surface-2:#151e29;
+    --surface-3:#0b1119;
+    --border:#263342;
+    --border-strong:#3b5065;
+    --text:#edf4fa;
+    --muted:#99a9b8;
+    --accent:#57c7e8;
+    --accent-strong:#239bc2;
+    --accent-soft:#102c38;
+    --green:#4fd19b;
+    --green-soft:#102b23;
+    --amber:#f2b84b;
+    --amber-soft:#302610;
+    --red:#ef6a72;
+    --red-soft:#33181c;
+    --focus:#8ee3ff;
+    --radius:14px;
+    --shadow:0 18px 50px rgba(0,0,0,.28);
+  }
+  * { box-sizing:border-box; }
+  html { min-width:320px; background:var(--bg); }
+  body {
+    margin:0;
+    min-height:100vh;
+    background:var(--bg);
+    color:var(--text);
+    font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    line-height:1.5;
+  }
+  button,input,textarea { font:inherit; }
+  button { color:inherit; }
+  [hidden] { display:none !important; }
+  .skip-link {
+    position:fixed;
+    left:16px;
+    top:12px;
+    z-index:1000;
+    transform:translateY(-160%);
+    background:var(--text);
+    color:var(--bg);
+    padding:10px 14px;
+    border-radius:8px;
+    font-weight:700;
+  }
+  .skip-link:focus { transform:translateY(0); }
+  .app-shell { width:min(1120px,calc(100% - 40px)); margin:0 auto; padding:28px 0 36px; }
+  .site-header { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:48px; }
+  .brand { display:flex; align-items:center; gap:12px; min-width:0; }
+  .brand-mark {
+    width:42px;
+    height:42px;
+    display:grid;
+    place-items:center;
+    flex:0 0 auto;
+    border:1px solid #34728a;
+    border-radius:12px;
+    background:#102833;
+    color:var(--accent);
+    font-weight:800;
+    letter-spacing:-.04em;
+  }
+  .brand-name { display:block; font-size:17px; font-weight:750; letter-spacing:-.01em; }
+  .brand-subtitle { display:block; color:var(--muted); font-size:12px; }
+  .version {
+    border:1px solid var(--border);
+    border-radius:999px;
+    background:var(--surface);
+    color:var(--muted);
+    padding:5px 10px;
+    font-size:12px;
+    white-space:nowrap;
+  }
+  .intro { max-width:730px; margin-bottom:28px; }
+  .eyebrow { margin:0 0 9px; color:var(--accent); font-size:12px; font-weight:750; letter-spacing:.12em; text-transform:uppercase; }
+  h1,h2,h3,p { margin-top:0; }
+  h1 { margin-bottom:14px; max-width:680px; font-size:clamp(32px,5vw,52px); line-height:1.08; letter-spacing:-.035em; }
+  .lede { margin:0; max-width:680px; color:var(--muted); font-size:17px; }
+  #statusBar {
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr) auto auto;
+    align-items:center;
+    gap:12px;
+    margin-bottom:20px;
+    padding:14px 16px;
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    background:var(--surface);
+    box-shadow:var(--shadow);
+  }
+  #statusDot { width:10px; height:10px; border-radius:50%; background:var(--red); flex:0 0 auto; }
+  #statusDot.checking { background:var(--muted); animation:none; transition:none; }
+  #statusDot.live { background:var(--green); box-shadow:0 0 0 4px rgba(79,209,155,.12); }
+  #statusDot.warning { background:var(--amber); animation:none; transition:none; box-shadow:none; }
+  #statusDot.loading { background:var(--amber); animation:pulse 1s ease-in-out infinite; }
+  .status-copy { min-width:0; }
+  #statusText { display:block; font-size:14px; }
+  #statusDetail { display:block; margin-top:1px; color:var(--muted); font-size:12px; }
+  #apiBadge {
+    border:1px solid var(--border-strong);
+    border-radius:999px;
+    color:var(--accent);
+    padding:4px 9px;
+    font-size:11px;
+    font-weight:700;
+    white-space:nowrap;
+  }
+  .workspace { display:grid; grid-template-columns:minmax(0,1.08fr) minmax(340px,.92fr); gap:20px; align-items:start; }
+  .flow-column { display:grid; gap:20px; }
+  .card {
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    background:var(--surface);
+    box-shadow:var(--shadow);
+    padding:22px;
+  }
+  .card-header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:18px; }
+  .step-title { display:flex; align-items:center; gap:10px; margin:0; font-size:17px; }
+  .step-number {
+    width:27px;
+    height:27px;
+    display:grid;
+    place-items:center;
+    border:1px solid var(--border-strong);
+    border-radius:50%;
+    color:var(--accent);
+    font-size:12px;
+    font-weight:800;
+  }
+  .supporting { margin:5px 0 0; color:var(--muted); font-size:13px; }
+  .source-actions,.composer-actions,.preview-actions,.result-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  .button {
+    min-height:42px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    border:1px solid transparent;
+    border-radius:10px;
+    background:var(--accent-strong);
+    color:#041016;
+    padding:10px 15px;
+    font-size:14px;
+    font-weight:760;
+    line-height:1.2;
+    cursor:pointer;
+    transition:background-color .16s ease,border-color .16s ease,transform .16s ease;
+  }
+  .button:hover:not(:disabled) { background:#42b9df; transform:translateY(-1px); }
+  .button.secondary { border-color:var(--border-strong); background:transparent; color:var(--text); }
+  .button.secondary:hover:not(:disabled) { border-color:var(--accent); background:var(--accent-soft); }
+  .button.tertiary { min-height:34px; border-color:transparent; background:transparent; color:var(--muted); padding:7px 9px; }
+  .button.tertiary:hover:not(:disabled) { background:var(--surface-2); color:var(--text); transform:none; }
+  .button.danger { border-color:#693039; background:transparent; color:#ff9ba1; }
+  .button.danger:hover:not(:disabled) { background:var(--red-soft); }
+  .button.small { min-height:34px; padding:7px 11px; font-size:12px; }
+  .button:disabled { border-color:var(--border); background:#19222c; color:#657483; cursor:not-allowed; transform:none; }
+  :focus-visible { outline:3px solid var(--focus); outline-offset:3px; }
+  .field-label { display:block; margin-bottom:8px; font-size:13px; font-weight:700; }
+  .field-hint { margin:9px 0 0; color:var(--muted); font-size:12px; }
+  .inline-message { min-height:20px; margin:10px 0 0; color:var(--muted); font-size:12px; }
+  .inline-message.error { color:#ff9ba1; }
+  #previewContainer { margin-top:18px; overflow:hidden; border:1px solid var(--border); border-radius:12px; background:var(--surface-3); }
+  .preview-frame { position:relative; min-height:220px; display:grid; place-items:center; background:#05080c; }
+  #screenPreview,#imagePreview { display:block; width:100%; max-height:390px; object-fit:contain; }
+  .preview-badge {
+    position:absolute;
+    top:12px;
+    left:12px;
+    border:1px solid rgba(255,255,255,.15);
+    border-radius:999px;
+    background:rgba(5,8,12,.86);
+    color:var(--text);
+    padding:4px 9px;
+    font-size:11px;
+    font-weight:750;
+  }
+  .preview-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:11px 12px; border-top:1px solid var(--border); }
+  #evidenceLabel { min-width:0; overflow:hidden; color:var(--muted); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+  textarea {
+    width:100%;
+    min-height:112px;
+    resize:vertical;
+    border:1px solid var(--border-strong);
+    border-radius:11px;
+    background:var(--surface-3);
+    color:var(--text);
+    padding:13px 14px;
+    font-size:15px;
+    line-height:1.5;
+  }
+  textarea::placeholder { color:#6f8191; }
+  textarea:disabled { opacity:.58; cursor:not-allowed; }
+  textarea:focus { border-color:var(--accent); }
+  .composer-actions { justify-content:space-between; margin-top:12px; }
+  .composer-primary { display:flex; gap:10px; align-items:center; }
+  #characterCount { color:var(--muted); font-size:11px; }
+  #micIndicator {
+    position:fixed;
+    right:24px;
+    bottom:24px;
+    z-index:20;
+    border:1px solid #70343b;
+    border-radius:999px;
+    background:#281317;
+    color:#ffb3b8;
+    padding:10px 14px;
+    font-size:13px;
+    font-weight:700;
+    box-shadow:var(--shadow);
+  }
+  .processing-card { border-color:#375667; }
+  .processing-header { display:flex; justify-content:space-between; gap:12px; align-items:baseline; margin-bottom:16px; }
+  .processing-header h2 { margin:0; font-size:16px; }
+  #processingNote { margin:0; color:var(--muted); font-size:11px; }
+  .progress-list { list-style:none; display:grid; gap:11px; margin:0; padding:0; }
+  .progress-step { display:grid; grid-template-columns:24px minmax(0,1fr) auto; align-items:center; gap:10px; color:var(--muted); font-size:13px; }
+  .progress-marker { width:22px; height:22px; display:grid; place-items:center; border:1px solid var(--border-strong); border-radius:50%; font-size:11px; font-weight:800; }
+  .progress-state { font-size:11px; }
+  .progress-step.active { color:var(--text); }
+  .progress-step.active .progress-marker { border-color:var(--amber); background:var(--amber-soft); color:var(--amber); }
+  .progress-step.complete .progress-marker { border-color:var(--green); background:var(--green-soft); color:var(--green); }
+  .progress-step.failed .progress-marker { border-color:var(--red); background:var(--red-soft); color:var(--red); }
+  .result-card { position:sticky; top:20px; min-height:420px; }
+  .result-card h2 { margin:0; font-size:17px; }
+  .empty-state { display:grid; min-height:320px; place-items:center; text-align:center; color:var(--muted); padding:30px; }
+  .empty-state p { max-width:300px; margin:0; }
+  .result-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:18px; }
+  #resultTitle { margin:0; font-size:19px; }
+  .result-badge { display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; padding:5px 9px; font-size:11px; font-weight:800; white-space:nowrap; }
+  .result-badge.verified { border-color:#296b53; background:var(--green-soft); color:var(--green); }
+  .result-badge.unverified { border-color:#755a22; background:var(--amber-soft); color:var(--amber); }
+  .result-badge.error { border-color:#71343b; background:var(--red-soft); color:#ff9ba1; }
+  .answer { margin:0 0 20px; color:var(--text); font-size:15px; line-height:1.68; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .context-panel { margin-bottom:17px; border-left:3px solid var(--accent); background:var(--surface-3); padding:12px 13px; }
+  .context-panel h3 { margin:0 0 5px; color:var(--accent); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+  #contextText { margin:0; color:#c1ced9; font-size:13px; overflow-wrap:anywhere; }
+  .result-actions { margin-bottom:15px; }
+  details { border-top:1px solid var(--border); padding-top:14px; }
+  summary { color:var(--muted); cursor:pointer; font-size:13px; font-weight:700; }
+  summary:hover { color:var(--text); }
+  .technical-details { padding-top:14px; }
+  .meta-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 16px; margin:0 0 17px; }
+  .meta-grid div { min-width:0; }
+  .meta-grid dt { margin-bottom:2px; color:var(--muted); font-size:10px; letter-spacing:.07em; text-transform:uppercase; }
+  .meta-grid dd { margin:0; color:var(--text); font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:11px; overflow-wrap:anywhere; }
+  .detail-group { margin-top:16px; }
+  .detail-group h3 { margin:0 0 8px; color:var(--muted); font-size:11px; letter-spacing:.07em; text-transform:uppercase; }
+  .detail-list { display:grid; gap:7px; margin:0; padding-left:18px; color:#becbd6; font-size:12px; }
+  .trace-list { list-style:none; display:grid; gap:8px; margin:0; padding:0; }
+  .trace-item { border:1px solid var(--border); border-radius:9px; background:var(--surface-3); padding:10px; }
+  .trace-title { display:block; margin-bottom:3px; font-size:12px; font-weight:750; }
+  .trace-meta,.trace-error { display:block; color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
+  .trace-error { margin-top:4px; color:#ff9ba1; }
+  .site-footer { margin-top:26px; color:var(--muted); text-align:center; font-size:11px; }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   canvas { display:none; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+  @media (max-width:880px) {
+    .workspace { grid-template-columns:1fr; }
+    .result-card { position:static; min-height:0; }
+    .empty-state { min-height:200px; }
+  }
+  @media (max-width:600px) {
+    .app-shell { width:min(100% - 24px,1120px); padding-top:18px; }
+    .site-header { margin-bottom:34px; }
+    .brand-subtitle { display:none; }
+    #statusBar { grid-template-columns:auto minmax(0,1fr); }
+    #apiBadge,#checkBtn { grid-column:2; justify-self:start; }
+    .card { padding:17px; }
+    .card-header,.preview-toolbar,.composer-actions,.result-heading { align-items:stretch; flex-direction:column; }
+    .source-actions,.preview-actions,.composer-primary { width:100%; }
+    .source-actions .button,.composer-primary .button { flex:1 1 auto; }
+    .meta-grid { grid-template-columns:1fr; }
+    .preview-frame { min-height:170px; }
+  }
+  @media (prefers-reduced-motion:reduce) {
+    *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
+    #statusDot.loading { animation:none; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="header">
-    <div class="logo">🧠</div>
-    <h1>OmniGuide</h1>
-    <span class="version">v2.0.0</span>
-  </div>
-  <div class="tagline">Multi-agent AI screen co-pilot — Vision + OCR + Intent + Reasoning</div>
-
-  <div id="statusBar">
-    <div id="statusDot"></div>
-    <span id="statusText">Checking backend...</span>
-    <span id="apiBadge" style="font-size:11px;color:var(--muted)"></span>
-  </div>
-
-  <div class="controls">
-    <button id="shareBtn">🖥️ Share Screen</button>
-    <button id="micBtn" class="secondary" disabled>🎤 Hold to Talk</button>
-    <button id="stopBtn" class="danger" style="display:none">⏹ Stop</button>
-  </div>
-
-  <div id="previewContainer">
-    <div class="preview-label">● LIVE SCREEN</div>
-    <video id="preview" autoplay muted></video>
-  </div>
-
-  <div class="inputRow">
-    <input type="text" id="textQuery" placeholder="Type your question and press Enter..." disabled />
-  </div>
-
-  <div id="log">
-    <div class="entry">
-      <div class="entry-system">Ready — Click "Share Screen", then ask a question by typing or holding the mic button.</div>
+<a class="skip-link" href="#mainContent">Skip to main content</a>
+<div class="app-shell">
+  <header class="site-header">
+    <div class="brand" aria-label="OmniGuide">
+      <span class="brand-mark" aria-hidden="true">O</span>
+      <span>
+        <span class="brand-name">OmniGuide</span>
+        <span class="brand-subtitle">Screen-grounded guidance</span>
+      </span>
     </div>
-  </div>
+    <span id="versionBadge" class="version">v2.1.0</span>
+  </header>
 
-  <div class="footer">OmniGuide v2.0.0 · 6-agent pipeline · Gemini 2.0 Flash · Google Cloud Run</div>
+  <main id="mainContent">
+    <section class="intro" aria-labelledby="pageTitle">
+      <p class="eyebrow">Screen-grounded AI guidance</p>
+      <h1 id="pageTitle">Ask about what is on your screen.</h1>
+      <p class="lede">Share a live screen or upload a screenshot. OmniGuide only presents guidance as verified when the backend confirms usable screen evidence and completed reasoning.</p>
+    </section>
+
+    <section id="statusBar" aria-live="polite" aria-atomic="true" aria-label="AI service status">
+      <span id="statusDot" class="checking" aria-hidden="true"></span>
+      <span class="status-copy">
+        <strong id="statusText">Checking AI service</strong>
+        <span id="statusDetail">Contacting the backend health endpoint.</span>
+      </span>
+      <span id="apiBadge" hidden></span>
+      <button id="checkBtn" class="button secondary small" type="button">Check again</button>
+    </section>
+
+    <div class="workspace">
+      <div class="flow-column">
+        <section class="card" aria-labelledby="evidenceTitle">
+          <div class="card-header">
+            <div>
+              <h2 id="evidenceTitle" class="step-title"><span class="step-number" aria-hidden="true">1</span>Add screen evidence</h2>
+              <p class="supporting">Use a live screen when available, or choose a screenshot file.</p>
+            </div>
+          </div>
+
+          <div class="source-actions">
+            <button id="shareBtn" class="button" type="button" disabled>Share screen</button>
+            <button id="uploadBtn" class="button secondary" type="button" disabled>Upload screenshot</button>
+            <input id="uploadInput" type="file" accept="image/*" hidden disabled />
+          </div>
+          <p id="evidenceMessage" class="inline-message" role="status">Evidence controls unlock when the AI service is ready.</p>
+
+          <div id="previewContainer" hidden>
+            <div class="preview-frame">
+              <video id="screenPreview" autoplay muted playsinline hidden aria-label="Live shared screen preview"></video>
+              <img id="imagePreview" hidden alt="Uploaded screenshot preview" />
+              <span id="previewBadge" class="preview-badge">Screen evidence</span>
+            </div>
+            <div class="preview-toolbar">
+              <span id="evidenceLabel">No evidence selected</span>
+              <div class="preview-actions">
+                <button id="replaceBtn" class="button tertiary small" type="button">Replace</button>
+                <button id="stopBtn" class="button danger small" type="button" hidden>Stop sharing</button>
+                <button id="removeBtn" class="button tertiary small" type="button">Remove</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="questionTitle">
+          <div class="card-header">
+            <div>
+              <h2 id="questionTitle" class="step-title"><span class="step-number" aria-hidden="true">2</span>Ask a question</h2>
+              <p class="supporting">Describe the help you need from the visible screen evidence.</p>
+            </div>
+          </div>
+
+          <form id="questionForm">
+            <label class="field-label" for="textQuery">Question</label>
+            <textarea id="textQuery" maxlength="4000" placeholder="For example: What should I click next, and why?" disabled></textarea>
+            <div class="composer-actions">
+              <span id="characterCount">0 / 4000</span>
+              <div class="composer-primary">
+                <button id="micBtn" class="button secondary" type="button" hidden disabled aria-pressed="false">Start voice input</button>
+                <button id="submitBtn" class="button" type="submit" disabled>Ask OmniGuide</button>
+              </div>
+            </div>
+            <p id="composerMessage" class="field-hint" role="status">Add screen evidence before asking a question. Press Ctrl or Command + Enter to submit.</p>
+          </form>
+        </section>
+
+        <section id="processingPanel" class="card processing-card" hidden aria-live="polite" aria-labelledby="processingTitle">
+          <div class="processing-header">
+            <h2 id="processingTitle">Request progress</h2>
+            <p id="processingNote">Backend stages update when the response arrives.</p>
+          </div>
+          <ol class="progress-list">
+            <li class="progress-step" data-progress="capture">
+              <span class="progress-marker" aria-hidden="true">1</span>
+              <span>Capturing evidence</span>
+              <span class="progress-state">Pending</span>
+            </li>
+            <li class="progress-step" data-progress="reading">
+              <span class="progress-marker" aria-hidden="true">2</span>
+              <span>Reading the screen</span>
+              <span class="progress-state">Pending</span>
+            </li>
+            <li class="progress-step" data-progress="intent">
+              <span class="progress-marker" aria-hidden="true">3</span>
+              <span>Understanding intent</span>
+              <span class="progress-state">Pending</span>
+            </li>
+            <li class="progress-step" data-progress="guidance">
+              <span class="progress-marker" aria-hidden="true">4</span>
+              <span>Producing verified guidance</span>
+              <span class="progress-state">Pending</span>
+            </li>
+          </ol>
+        </section>
+      </div>
+
+      <section class="card result-card" aria-labelledby="guidanceTitle">
+        <h2 id="guidanceTitle">Guidance</h2>
+        <div id="emptyState" class="empty-state">
+          <p>Your latest verified or unverified result will appear here with its grounded context and technical details.</p>
+        </div>
+
+        <div id="resultContent" hidden aria-live="polite" aria-atomic="false">
+          <div class="result-heading">
+            <h3 id="resultTitle">Result</h3>
+            <span id="resultBadge" class="result-badge unverified">Unverified</span>
+          </div>
+          <p id="answerText" class="answer"></p>
+
+          <div class="context-panel">
+            <h3>Grounded context</h3>
+            <p id="contextText">Not available for this response.</p>
+          </div>
+
+          <div class="result-actions">
+            <button id="retryBtn" class="button secondary small" type="button" hidden>Retry request</button>
+          </div>
+
+          <details id="technicalDetails">
+            <summary>Technical details</summary>
+            <div class="technical-details">
+              <dl class="meta-grid">
+                <div><dt>Provider</dt><dd id="metaProvider">Not reported</dd></div>
+                <div><dt>Model</dt><dd id="metaModel">Not reported</dd></div>
+                <div><dt>Run ID</dt><dd id="metaRunId">Not reported</dd></div>
+                <div><dt>Request status</dt><dd id="metaStatus">Not reported</dd></div>
+                <div><dt>Intent</dt><dd id="metaIntent">Not reported</dd></div>
+                <div><dt>Confidence</dt><dd id="metaConfidence">Not reported</dd></div>
+                <div><dt>Latency</dt><dd id="metaLatency">Not reported</dd></div>
+                <div><dt>Tokens</dt><dd id="metaTokens">Not reported</dd></div>
+              </dl>
+
+              <div id="agentChainGroup" class="detail-group" hidden>
+                <h3>Agent chain</h3>
+                <ul id="agentChainList" class="detail-list"></ul>
+              </div>
+              <div id="errorsGroup" class="detail-group" hidden>
+                <h3>Reported errors</h3>
+                <ul id="errorsList" class="detail-list"></ul>
+              </div>
+              <div id="tracesGroup" class="detail-group" hidden>
+                <h3>Stage traces</h3>
+                <ul id="tracesList" class="trace-list"></ul>
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">OmniGuide v2.1.0 · Provider-independent · Screen-grounded REST guidance</footer>
 </div>
 
-<div id="micIndicator">🔴 Recording... release to send</div>
+<div id="micIndicator" hidden role="status">Listening for speech…</div>
 <canvas id="canvas"></canvas>
 
 <script>
@@ -103,214 +473,879 @@ const BACKEND_URL = "https://omniguide-backend-973581476293.us-central1.run.app"
 const ASK_URL = BACKEND_URL + "/ask";
 const WS_URL = "wss://omniguide-backend-973581476293.us-central1.run.app/ws";
 const HEALTH_URL = BACKEND_URL + "/health";
+const HEALTH_TIMEOUT_MS = 12000;
+const ASK_TIMEOUT_MS = 90000;
+const MAX_IMAGE_CHARACTERS = 10000000;
+const MAX_IMAGE_EDGE = 1920;
 
 let screenStream = null;
+let uploadedImageBase64 = null;
+let evidenceMode = null;
 let isProcessing = false;
 let useMode = null;
+let backendState = "checking";
+let backendVersion = "2.1.0";
+let backendDetail = "Contacting the backend health endpoint.";
+let checkingBackend = false;
+let requestController = null;
+let lastRequest = null;
+let evidenceSelectionId = 0;
+let isSelectingEvidence = false;
 let ws = null;
-let lastQuery = '';
 
 const $ = id => document.getElementById(id);
-const statusDot = $('statusDot'), statusText = $('statusText'), apiBadge = $('apiBadge');
-const shareBtn = $('shareBtn'), micBtn = $('micBtn'), stopBtn = $('stopBtn');
-const textInput = $('textQuery'), previewContainer = $('previewContainer');
-const video = $('preview'), canvas = $('canvas'), log = $('log');
-const micIndicator = $('micIndicator');
+const statusDot = $("statusDot");
+const statusText = $("statusText");
+const statusDetail = $("statusDetail");
+const apiBadge = $("apiBadge");
+const checkBtn = $("checkBtn");
+const versionBadge = $("versionBadge");
+const shareBtn = $("shareBtn");
+const uploadBtn = $("uploadBtn");
+const uploadInput = $("uploadInput");
+const previewContainer = $("previewContainer");
+const screenPreview = $("screenPreview");
+const imagePreview = $("imagePreview");
+const previewBadge = $("previewBadge");
+const evidenceLabel = $("evidenceLabel");
+const evidenceMessage = $("evidenceMessage");
+const replaceBtn = $("replaceBtn");
+const stopBtn = $("stopBtn");
+const removeBtn = $("removeBtn");
+const questionForm = $("questionForm");
+const textInput = $("textQuery");
+const characterCount = $("characterCount");
+const composerMessage = $("composerMessage");
+const micBtn = $("micBtn");
+const submitBtn = $("submitBtn");
+const micIndicator = $("micIndicator");
+const canvas = $("canvas");
+const processingPanel = $("processingPanel");
+const processingTitle = $("processingTitle");
+const processingNote = $("processingNote");
+const emptyState = $("emptyState");
+const resultContent = $("resultContent");
+const resultTitle = $("resultTitle");
+const resultBadge = $("resultBadge");
+const answerText = $("answerText");
+const contextText = $("contextText");
+const retryBtn = $("retryBtn");
+const technicalDetails = $("technicalDetails");
+const metaProvider = $("metaProvider");
+const metaModel = $("metaModel");
+const metaRunId = $("metaRunId");
+const metaStatus = $("metaStatus");
+const metaIntent = $("metaIntent");
+const metaConfidence = $("metaConfidence");
+const metaLatency = $("metaLatency");
+const metaTokens = $("metaTokens");
+const agentChainGroup = $("agentChainGroup");
+const agentChainList = $("agentChainList");
+const errorsGroup = $("errorsGroup");
+const errorsList = $("errorsList");
+const tracesGroup = $("tracesGroup");
+const tracesList = $("tracesList");
 
-function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function hasEvidence() {
+  return evidenceMode === "screen" ? Boolean(screenStream) :
+    evidenceMode === "upload" ? Boolean(uploadedImageBase64) : false;
+}
 
-function providerErrorMessage(errors) {
-  const errorText = (errors || []).join(' ');
-  if (/RESOURCE_EXHAUSTED|prepayment credits are depleted|no available credits/i.test(errorText)) {
-    return 'The AI backend is online, but its Gemini project has no available API credits. Ask the project billing owner to restore an available balance, then try again.';
+function setServiceStatus(kind, title, detail, badge) {
+  statusDot.className = kind || "";
+  statusText.textContent = title;
+  statusDetail.textContent = detail || "";
+  apiBadge.textContent = badge || "";
+  apiBadge.hidden = !badge;
+}
+
+function renderBackendStatus() {
+  if (backendState === "ready") {
+    setServiceStatus("live", "AI service ready", backendDetail, "REST /ask");
+  } else if (backendState === "unavailable") {
+    setServiceStatus("warning", "Backend live but no AI provider", backendDetail, "");
+  } else if (backendState === "checking") {
+    setServiceStatus("checking", "Checking AI service", backendDetail, "");
+  } else {
+    setServiceStatus("", "AI service unreachable", backendDetail, "");
   }
-  return null;
 }
 
-function addEntry(question, answer, isError, context, latency, tokens, intent, confidence, chain, errors) {
-  const div = document.createElement('div');
-  div.className = 'entry';
-  const time = new Date().toLocaleTimeString();
-  let html = '<div class="entry-header"><span class="entry-q">' + escapeHtml(question) + '</span><span class="entry-time">' + time + '</span></div>';
+function updateControls() {
+  const serviceReady = backendState === "ready" && useMode === "rest";
+  const evidenceReady = hasEvidence();
+  const evidenceBusy = isProcessing || isSelectingEvidence;
+  shareBtn.disabled = !serviceReady || evidenceBusy;
+  uploadBtn.disabled = !serviceReady || evidenceBusy;
+  uploadInput.disabled = !serviceReady || evidenceBusy;
+  replaceBtn.disabled = !serviceReady || evidenceBusy;
+  stopBtn.disabled = evidenceBusy;
+  removeBtn.disabled = evidenceBusy;
+  textInput.disabled = !serviceReady || !evidenceReady || evidenceBusy;
+  micBtn.disabled = !serviceReady || !evidenceReady || evidenceBusy;
+  submitBtn.disabled = !serviceReady || !evidenceReady || evidenceBusy || !textInput.value.trim();
+  checkBtn.disabled = checkingBackend || evidenceBusy;
+  retryBtn.disabled = evidenceBusy || !lastRequest;
 
-  // Meta badges
-  let metaHtml = '<div class="entry-meta">';
-  if (intent) metaHtml += '<span class="meta-badge meta-intent">' + escapeHtml(intent) + '</span>';
-  if (confidence !== undefined && confidence !== null) metaHtml += '<span class="meta-badge meta-conf">conf ' + confidence + '</span>';
-  if (chain && chain.length) metaHtml += '<span class="meta-badge meta-chain">agents: ' + chain.join('→') + '</span>';
-  if (errors && errors.length) metaHtml += '<span class="meta-badge meta-error">' + errors.length + ' error' + (errors.length > 1 ? 's' : '') + '</span>';
-  metaHtml += '</div>';
-  html += metaHtml;
-
-  if (context) html += '<div class="entry-context">' + escapeHtml(context) + '</div>';
-  const cls = isError ? 'entry-a entry-error' : 'entry-a';
-  html += '<div class="' + cls + '">' + escapeHtml(answer) + '</div>';
-  if (latency) html += '<div class="entry-time" style="margin-top:4px">⚡ ' + latency + 'ms' + (tokens ? ' · ' + tokens + ' tokens' : '') + '</div>';
-  div.innerHTML = html;
-  log.prepend(div);
-  return div;
+  if (!serviceReady) {
+    evidenceMessage.textContent = "Evidence controls unlock when the AI service is ready.";
+    composerMessage.textContent = "The AI service must be ready before a question can be submitted.";
+  } else if (isSelectingEvidence) {
+    evidenceMessage.textContent = "Preparing the new screen evidence. Submission is paused until it is ready.";
+    composerMessage.textContent = "Wait for the new evidence preview before submitting your question.";
+  } else if (!evidenceReady) {
+    evidenceMessage.textContent = "Choose a live screen or screenshot. Evidence stays in this browser until you ask, then it is sent to the configured AI service.";
+    composerMessage.textContent = "Add screen evidence before asking a question. Press Ctrl or Command + Enter to submit.";
+  } else {
+    evidenceMessage.textContent = evidenceMode === "screen" ?
+      "Live screen evidence is ready." : "Screenshot evidence is ready.";
+    composerMessage.textContent = "Ask about the selected evidence. Press Ctrl or Command + Enter to submit.";
+  }
 }
 
-// ── Backend check ──
+function setInlineError(element, message) {
+  element.textContent = message;
+  element.classList.toggle("error", Boolean(message));
+}
+
+function stopActiveStream() {
+  if (!screenStream) return;
+  const tracks = screenStream.getTracks();
+  tracks.forEach(track => {
+    track.onended = null;
+    track.stop();
+  });
+  screenStream = null;
+  screenPreview.srcObject = null;
+}
+
 async function checkBackend() {
+  if (checkingBackend || isProcessing || isSelectingEvidence) return;
+  checkingBackend = true;
+  stopSpeechInput();
+  backendState = "checking";
+  backendDetail = "Contacting the backend health endpoint.";
+  renderBackendStatus();
+  updateControls();
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
   try {
-    const res = await fetch(HEALTH_URL);
-    const data = await res.json();
-    if (data.status && data.gemini_key_configured) {
-      statusDot.className = 'live';
-      statusText.textContent = 'Backend live · v' + (data.version || '1.x');
-      if (data.agents) statusText.textContent += ' · ' + data.agents.length + ' agents';
+    const response = await fetch(HEALTH_URL, {
+      method: "GET",
+      cache: "no-store",
+      headers: { "Accept": "application/json" },
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error("Health check returned HTTP " + response.status);
+    const data = await response.json();
+    const providerReady = data.model_available === true || data.provider_ready === true;
+    backendVersion = typeof data.version === "string" && data.version ? data.version : "2.1.0";
+    versionBadge.textContent = "v" + backendVersion;
 
-      // This deployed API exposes /ask. Do not send a fake prompt here: it invokes
-      // paid Gemini agents on every page load and cannot validate a real screenshot.
-      useMode = 'rest';
-      apiBadge.textContent = '(REST /ask)';
-
-      shareBtn.disabled = false;
-    } else if (data.status) {
-      statusDot.className = 'loading';
-      statusText.textContent = 'Backend live but Gemini key NOT configured';
-    } else { throw new Error('Bad status'); }
-  } catch (e) {
-    statusDot.className = '';
-    statusText.textContent = 'Backend unreachable — try refreshing';
+    if (providerReady) {
+      useMode = "rest";
+      backendState = "ready";
+      const agentCount = Array.isArray(data.agents) ? data.agents.length : 0;
+      backendDetail = "Backend v" + backendVersion + (agentCount ? " · " + agentCount + " agents" : "");
+    } else {
+      useMode = null;
+      backendState = "unavailable";
+      backendDetail = "The backend responded, but no complete vision and text provider path is available.";
+    }
+  } catch (error) {
+    useMode = null;
+    backendState = "offline";
+    if (error.name === "AbortError") {
+      backendDetail = "The health check timed out. Use Check again to retry.";
+    } else if (!navigator.onLine) {
+      backendDetail = "This browser appears to be offline. Reconnect, then use Check again.";
+    } else {
+      backendDetail = "The backend could not be reached. Use Check again to retry.";
+    }
+  } finally {
+    window.clearTimeout(timeoutId);
+    checkingBackend = false;
+    renderBackendStatus();
+    updateControls();
   }
 }
 
+// REST /ask is the primary transport. This keeps the legacy WebSocket path intact
+// for backward compatibility without probing or expanding it.
 function connectWS() {
+  if (useMode !== "ws") return null;
   try {
     ws = new WebSocket(WS_URL);
-    ws.onopen = () => { if (useMode === 'ws') statusDot.className = 'live'; };
-    ws.onclose = () => { if (useMode === 'ws') { statusDot.className = ''; ws = null; } };
+    ws.onclose = () => { ws = null; };
     ws.onerror = () => { ws = null; };
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.error) { addEntry('Error', data.error, true); }
-      else {
-        addEntry(lastQuery || 'Query', data.response, false, data.context, data.latency_ms, data.tokens,
-          data.intent, data.confidence, data.agent_chain, data.errors);
-      }
-      isProcessing = false; statusDot.className = 'live'; statusText.textContent = 'Ready';
-    };
-  } catch(e) { console.error('WS failed:', e); }
+    return ws;
+  } catch (error) {
+    ws = null;
+    return null;
+  }
 }
 
-checkBackend();
+function renderEvidencePreview() {
+  const ready = hasEvidence();
+  previewContainer.hidden = !ready;
+  screenPreview.hidden = evidenceMode !== "screen";
+  imagePreview.hidden = evidenceMode !== "upload";
+  stopBtn.hidden = evidenceMode !== "screen";
+  previewBadge.textContent = evidenceMode === "screen" ? "Live screen" : "Uploaded screenshot";
+  updateControls();
+}
 
-// ── Screen share ──
-shareBtn.onclick = async () => {
+function clearEvidence(message, preserveRequest = isProcessing) {
+  evidenceSelectionId += 1;
+  isSelectingEvidence = false;
+  stopSpeechInput();
+  stopActiveStream();
+  uploadedImageBase64 = null;
+  evidenceMode = null;
+  imagePreview.removeAttribute("src");
+  uploadInput.value = "";
+  if (!preserveRequest) {
+    lastRequest = null;
+    retryBtn.hidden = true;
+  }
+  renderEvidencePreview();
+  if (message) {
+    setInlineError(evidenceMessage, message);
+  }
+}
+
+async function startScreenShare() {
+  if (backendState !== "ready" || isProcessing || isSelectingEvidence) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    setInlineError(evidenceMessage, "Screen sharing is not supported in this browser. Upload a screenshot instead.");
+    return;
+  }
+
+  const selectionId = ++evidenceSelectionId;
+  isSelectingEvidence = true;
+  stopSpeechInput();
+  updateControls();
   try {
-    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 } });
-    video.srcObject = screenStream;
-    previewContainer.classList.add('active');
-    micBtn.disabled = false; textInput.disabled = false;
-    shareBtn.style.display = 'none'; stopBtn.style.display = 'block';
-    addEntry('System', 'Screen sharing active. Ask a question!', false);
-    screenStream.getVideoTracks()[0].onended = stopSharing;
-  } catch (err) { addEntry('Error', 'Screen share was cancelled or denied.', true); }
+    const newStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: 5, max: 10 } },
+      audio: false
+    });
+    if (selectionId !== evidenceSelectionId || backendState !== "ready" || isProcessing) {
+      newStream.getTracks().forEach(track => track.stop());
+      return;
+    }
+    stopActiveStream();
+    uploadedImageBase64 = null;
+    imagePreview.removeAttribute("src");
+    screenStream = newStream;
+    evidenceMode = "screen";
+    lastRequest = null;
+    retryBtn.hidden = true;
+    screenPreview.srcObject = newStream;
+    await screenPreview.play().catch(() => {});
+    const videoTrack = newStream.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.onended = () => {
+        if (screenStream === newStream) {
+          clearEvidence("Screen sharing ended. Share again or upload a screenshot.");
+        }
+      };
+      const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+      evidenceLabel.textContent = settings.displaySurface ?
+        "Live " + settings.displaySurface + " capture" : "Live shared screen";
+    } else {
+      evidenceLabel.textContent = "Live shared screen";
+    }
+    setInlineError(evidenceMessage, "");
+    renderEvidencePreview();
+  } catch (error) {
+    if (selectionId !== evidenceSelectionId) return;
+    const denied = error && (error.name === "NotAllowedError" || error.name === "AbortError");
+    setInlineError(
+      evidenceMessage,
+      denied ? "Screen sharing was cancelled or denied. You can upload a screenshot instead." :
+        "The screen could not be shared. Upload a screenshot or try again."
+    );
+  } finally {
+    if (selectionId === evidenceSelectionId) {
+      isSelectingEvidence = false;
+      updateControls();
+    }
+  }
+}
+
+function loadImageFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("The selected file could not be decoded as an image."));
+    image.src = url;
+  });
+}
+
+function encodeImageAsJpeg(image) {
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  if (!sourceWidth || !sourceHeight) throw new Error("The selected image has no readable dimensions.");
+
+  const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(sourceWidth, sourceHeight));
+  const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, targetWidth, targetHeight);
+  context.drawImage(image, 0, 0, targetWidth, targetHeight);
+  const base64 = canvas.toDataURL("image/jpeg", 0.86).split(",")[1];
+  if (!base64 || base64.length > MAX_IMAGE_CHARACTERS) {
+    throw new Error("The screenshot is too large after processing. Choose a smaller image.");
+  }
+  return base64;
+}
+
+async function handleScreenshotUpload(file) {
+  if (!file || backendState !== "ready" || isProcessing || isSelectingEvidence) return;
+  if (!file.type || !file.type.startsWith("image/")) {
+    setInlineError(evidenceMessage, "Choose an image file such as PNG, JPEG, or WebP.");
+    uploadInput.value = "";
+    return;
+  }
+  if (file.size > 25 * 1024 * 1024) {
+    setInlineError(evidenceMessage, "The selected file is larger than 25 MB. Choose a smaller screenshot.");
+    uploadInput.value = "";
+    return;
+  }
+
+  const selectionId = ++evidenceSelectionId;
+  isSelectingEvidence = true;
+  stopSpeechInput();
+  updateControls();
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImageFromUrl(objectUrl);
+    if (selectionId !== evidenceSelectionId || backendState !== "ready" || isProcessing) return;
+    const base64 = encodeImageAsJpeg(image);
+    stopActiveStream();
+    uploadedImageBase64 = base64;
+    evidenceMode = "upload";
+    lastRequest = null;
+    retryBtn.hidden = true;
+    imagePreview.src = "data:image/jpeg;base64," + base64;
+    evidenceLabel.textContent = file.name || "Uploaded screenshot";
+    setInlineError(evidenceMessage, "");
+    renderEvidencePreview();
+  } catch (error) {
+    if (selectionId !== evidenceSelectionId) return;
+    setInlineError(evidenceMessage, error.message || "The screenshot could not be prepared.");
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+    uploadInput.value = "";
+    if (selectionId === evidenceSelectionId) {
+      isSelectingEvidence = false;
+      updateControls();
+    }
+  }
+}
+
+function captureScreenFrame() {
+  const width = screenPreview.videoWidth;
+  const height = screenPreview.videoHeight;
+  if (!width || !height) {
+    throw new Error("The shared screen is not ready to capture yet. Wait a moment and retry.");
+  }
+  const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(width, height));
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  canvas.getContext("2d").drawImage(screenPreview, 0, 0, canvas.width, canvas.height);
+  const base64 = canvas.toDataURL("image/jpeg", 0.82).split(",")[1];
+  if (!base64 || base64.length > MAX_IMAGE_CHARACTERS) {
+    throw new Error("The captured screen frame is too large to submit.");
+  }
+  return base64;
+}
+
+function captureEvidence() {
+  if (evidenceMode === "upload" && uploadedImageBase64) return uploadedImageBase64;
+  if (evidenceMode === "screen" && screenStream) return captureScreenFrame();
+  throw new Error("Add a live screen or screenshot before asking a question.");
+}
+
+// ── Request and result handling ──
+const progressSteps = {
+  capture: document.querySelector('[data-progress="capture"]'),
+  reading: document.querySelector('[data-progress="reading"]'),
+  intent: document.querySelector('[data-progress="intent"]'),
+  guidance: document.querySelector('[data-progress="guidance"]')
 };
+const progressNumbers = { capture: "1", reading: "2", intent: "3", guidance: "4" };
 
-function stopSharing() {
-  if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
-  previewContainer.classList.remove('active');
-  micBtn.disabled = true; textInput.disabled = true;
-  shareBtn.style.display = 'block'; stopBtn.style.display = 'none';
-  addEntry('System', 'Screen sharing stopped.', false);
+function setProgressState(name, state, label) {
+  const step = progressSteps[name];
+  if (!step) return;
+  step.classList.remove("active", "complete", "failed");
+  if (state && state !== "pending") step.classList.add(state);
+  if (state === "active") {
+    step.setAttribute("aria-current", "step");
+  } else {
+    step.removeAttribute("aria-current");
+  }
+  const marker = step.querySelector(".progress-marker");
+  marker.textContent = state === "complete" ? "✓" : state === "failed" ? "!" : progressNumbers[name];
+  step.querySelector(".progress-state").textContent = label ||
+    (state === "complete" ? "Complete" : state === "failed" ? "Not completed" : state === "active" ? "In progress" : "Pending");
 }
-stopBtn.onclick = stopSharing;
 
-function captureFrame() {
-  const w = video.videoWidth, h = video.videoHeight;
-  if (!w || !h) return null;
-  const scale = Math.min(1, 1280 / w);
-  canvas.width = w * scale; canvas.height = h * scale;
-  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+function beginProgress() {
+  processingPanel.hidden = false;
+  processingTitle.textContent = "Preparing request";
+  processingNote.textContent = "Backend stages update when the response arrives.";
+  Object.keys(progressSteps).forEach(name => setProgressState(name, "pending"));
+  setProgressState("capture", "active", "Capturing");
 }
 
-// ── Send query ──
-async function sendQuery(queryText) {
-  if (isProcessing) return;
-  if (!screenStream) { addEntry('Error', 'Share your screen first!', true); return; }
+function markEvidenceCaptured() {
+  setProgressState("capture", "complete", "Captured");
+  setProgressState("reading", "active", "Backend working");
+  processingTitle.textContent = "Analyzing screen evidence";
+}
 
-  const frame = captureFrame();
-  if (!frame) { addEntry('Error', 'Could not capture screen frame.', true); return; }
+function finishProgress(data, verified) {
+  const traces = data && Array.isArray(data.traces) ? data.traces : [];
+  const intentTrace = traces.find(trace => trace && trace.stage === "intent");
+  const intentOk = Boolean(intentTrace && (intentTrace.status === "ok" || intentTrace.status === "fallback"));
+
+  setProgressState("reading", data && data.grounded === true ? "complete" : "failed",
+    data && data.grounded === true ? "Evidence grounded" : "Not grounded");
+  setProgressState("intent", intentOk ? "complete" : "failed",
+    intentOk ? "Intent classified" : "Not completed");
+  setProgressState("guidance", verified ? "complete" : "failed",
+    verified ? "Verified" : "Unverified");
+  processingTitle.textContent = verified ? "Verified guidance ready" : "Request finished without verified guidance";
+  processingNote.textContent = verified ?
+    "The backend confirmed grounded evidence and completed reasoning." :
+    "Review the result and reported technical details before retrying.";
+}
+
+function failProgress(label) {
+  setProgressState("reading", "failed", label || "Not completed");
+  setProgressState("intent", "failed", "Not completed");
+  setProgressState("guidance", "failed", "Not produced");
+  processingTitle.textContent = "Request did not complete";
+  processingNote.textContent = "The captured evidence was not presented as verified guidance.";
+}
+
+async function readResponseBody(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return { error: text.slice(0, 1000) };
+  }
+}
+
+function formatValidationDetail(detail) {
+  if (typeof detail === "string") return detail;
+  if (!Array.isArray(detail)) return "";
+  return detail.map(item => {
+    if (typeof item === "string") return item;
+    if (!item || typeof item !== "object") return String(item);
+    const location = Array.isArray(item.loc) ? item.loc.join(".") : "";
+    const message = typeof item.msg === "string" ? item.msg : "Invalid value";
+    return location ? location + ": " + message : message;
+  }).join(" ");
+}
+
+function reportedValue(value) {
+  return value === undefined || value === null || value === "" ? "Not reported" : String(value);
+}
+
+function replaceList(list, group, values) {
+  list.replaceChildren();
+  const items = Array.isArray(values) ? values.filter(value => value !== undefined && value !== null && value !== "") : [];
+  items.forEach(value => {
+    const item = document.createElement("li");
+    item.textContent = typeof value === "string" ? value : JSON.stringify(value);
+    list.appendChild(item);
+  });
+  group.hidden = items.length === 0;
+}
+
+function renderTraces(traces) {
+  tracesList.replaceChildren();
+  const items = Array.isArray(traces) ? traces.filter(trace => trace && typeof trace === "object") : [];
+  items.forEach(trace => {
+    const item = document.createElement("li");
+    item.className = "trace-item";
+
+    const title = document.createElement("span");
+    title.className = "trace-title";
+    title.textContent = reportedValue(trace.stage) + " · " + reportedValue(trace.status);
+    item.appendChild(title);
+
+    const metadata = [];
+    if (trace.provider) metadata.push("provider " + trace.provider);
+    if (trace.model) metadata.push("model " + trace.model);
+    if (typeof trace.tokens === "number") metadata.push(trace.tokens + " tokens");
+    if (Array.isArray(trace.attempts) && trace.attempts.length) metadata.push("attempts " + trace.attempts.join(", "));
+    if (metadata.length) {
+      const meta = document.createElement("span");
+      meta.className = "trace-meta";
+      meta.textContent = metadata.join(" · ");
+      item.appendChild(meta);
+    }
+    if (trace.error) {
+      const error = document.createElement("span");
+      error.className = "trace-error";
+      error.textContent = String(trace.error);
+      item.appendChild(error);
+    }
+    tracesList.appendChild(item);
+  });
+  tracesGroup.hidden = items.length === 0;
+}
+
+function renderResult(options) {
+  const data = options.data && typeof options.data === "object" ? options.data : {};
+  emptyState.hidden = true;
+  resultContent.hidden = false;
+  technicalDetails.open = false;
+  resultTitle.textContent = options.title;
+  resultBadge.textContent = options.badge;
+  resultBadge.className = "result-badge " + options.kind;
+  answerText.textContent = options.answer;
+  contextText.textContent = typeof data.context === "string" && data.context ?
+    data.context : "Not available for this response.";
+  retryBtn.hidden = !options.retry || !lastRequest;
+
+  metaProvider.textContent = reportedValue(data.provider);
+  metaModel.textContent = reportedValue(data.model);
+  metaRunId.textContent = reportedValue(data.run_id);
+  metaStatus.textContent = reportedValue(data.status);
+  metaIntent.textContent = reportedValue(data.intent);
+  metaConfidence.textContent = typeof data.confidence === "number" ? String(data.confidence) : "Not reported";
+  metaLatency.textContent = typeof data.latency_ms === "number" ? data.latency_ms + " ms" : "Not reported";
+  metaTokens.textContent = typeof data.tokens === "number" ? String(data.tokens) : "Not reported";
+
+  replaceList(agentChainList, agentChainGroup, data.agent_chain);
+  replaceList(errorsList, errorsGroup, data.errors);
+  renderTraces(data.traces);
+  updateControls();
+}
+async function sendQuery(queryText, capturedImage) {
+  const query = String(queryText || "").trim();
+  if (isProcessing || isSelectingEvidence || !query) return;
+  if (backendState !== "ready" || useMode !== "rest") {
+    renderResult({
+      kind: "error",
+      title: "AI service unavailable",
+      badge: "Offline",
+      answer: "The AI service is not ready. Use Check again before retrying this request.",
+      data: {},
+      retry: Boolean(lastRequest)
+    });
+    return;
+  }
 
   isProcessing = true;
-  statusDot.className = 'loading';
-  statusText.textContent = 'Running agent pipeline...';
-  lastQuery = queryText;
+  stopSpeechInput();
+  beginProgress();
+  statusDot.className = "loading";
+  statusText.textContent = "Processing screen evidence";
+  statusDetail.textContent = "The request is active. Duplicate submissions are disabled.";
+  apiBadge.textContent = "REST /ask";
+  apiBadge.hidden = false;
+  updateControls();
 
-  const loadingEl = addEntry(queryText, '⏳ Running Vision → OCR → Intent → Reasoning...', false);
-  const answerEl = loadingEl.querySelector('.entry-a');
-
+  let timeoutId = null;
+  let finalStatus = null;
+  let requestPrepared = false;
   try {
-    if (useMode === 'rest') {
-      const res = await fetch(ASK_URL, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: frame, query: queryText })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        const providerError = providerErrorMessage(data.errors);
-        loadingEl.remove();
-        if (providerError) {
-          addEntry(queryText, providerError, true, data.context, data.latency_ms, data.tokens,
-            data.intent, data.confidence, data.agent_chain, data.errors);
-          isProcessing = false;
-          statusDot.className = '';
-          statusText.textContent = 'AI unavailable — Gemini credits needed';
-          return;
-        }
-        addEntry(queryText, data.response, false, data.context, data.latency_ms, data.tokens,
-          data.intent, data.confidence, data.agent_chain, data.errors);
-      } else {
-        answerEl.textContent = 'Error: ' + (data.error || data.detail || 'HTTP ' + res.status);
-        answerEl.className = 'entry-a entry-error';
-      }
-    } else if (useMode === 'ws') {
-      if (!ws || ws.readyState !== WebSocket.OPEN) { connectWS(); await new Promise(r => setTimeout(r, 2000)); }
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        answerEl.textContent = 'Could not connect to backend. Try refreshing.';
-        answerEl.className = 'entry-a entry-error';
-      } else {
-        ws.send(JSON.stringify({ image: frame, query: queryText }));
-        loadingEl.remove();
-        return;
-      }
-    } else {
-      answerEl.textContent = 'Backend mode not detected. Refresh the page.';
-      answerEl.className = 'entry-a entry-error';
+    const image = capturedImage || captureEvidence();
+    if (typeof image !== "string" || !image || image.startsWith("data:")) {
+      throw new Error("Screen evidence could not be encoded as raw JPEG data.");
     }
-  } catch (e) {
-    answerEl.textContent = 'Network error: ' + e.message + '. Backend may be cold-starting. Try again in 10s.';
-    answerEl.className = 'entry-a entry-error';
+    lastRequest = { image: image, query: query };
+    requestPrepared = true;
+    markEvidenceCaptured();
+
+    requestController = new AbortController();
+    timeoutId = window.setTimeout(() => requestController.abort(), ASK_TIMEOUT_MS);
+    const response = await fetch(ASK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({ image, query }),
+      signal: requestController.signal
+    });
+    const data = await readResponseBody(response);
+    const hasVerifiedAnswer = response.ok &&
+      data.verified === true &&
+      data.grounded === true &&
+      typeof data.response === "string" &&
+      Boolean(data.response.trim());
+
+    if (hasVerifiedAnswer) {
+      finishProgress(data, true);
+      renderResult({
+        kind: "verified",
+        title: "Verified guidance",
+        badge: "Verified",
+        answer: data.response,
+        data: data,
+        retry: false
+      });
+    } else if (response.status === 503 || data.verified === false || data.grounded === false) {
+      finishProgress(data, false);
+      const unverifiedAnswer = typeof data.response === "string" && data.response ?
+        data.response : typeof data.error === "string" && data.error ?
+          data.error : "The backend did not return verified, screen-grounded guidance.";
+      renderResult({
+        kind: "unverified",
+        title: "Guidance could not be verified",
+        badge: "Unverified",
+        answer: unverifiedAnswer,
+        data: data,
+        retry: true
+      });
+      finalStatus = {
+        kind: "warning",
+        title: "Backend responded · guidance unverified",
+        detail: "No successful state was inferred. Review the response details or retry.",
+        badge: "REST /ask"
+      };
+    } else {
+      const validationMessage = formatValidationDetail(data.detail);
+      const reportedError = typeof data.error === "string" ? data.error : "";
+      const message = validationMessage || reportedError ||
+        "The request failed with HTTP " + response.status + ".";
+      failProgress(response.status === 400 || response.status === 422 ? "Request rejected" : "HTTP " + response.status);
+      renderResult({
+        kind: "error",
+        title: response.status === 400 || response.status === 422 ?
+          "Request could not be processed" : "Request failed",
+        badge: "Error",
+        answer: message,
+        data: data,
+        retry: true
+      });
+      finalStatus = {
+        kind: "warning",
+        title: "Request needs attention",
+        detail: "The backend returned HTTP " + response.status + ". Review the result before retrying.",
+        badge: "REST /ask"
+      };
+    }
+  } catch (error) {
+    const timedOut = error && error.name === "AbortError";
+    const captureFailed = !requestPrepared;
+    if (captureFailed) setProgressState("capture", "failed", "Capture failed");
+    failProgress(timedOut ? "Timed out" : captureFailed ? "Capture failed" : "Connection failed");
+
+    if (timedOut) {
+      renderResult({
+        kind: "error",
+        title: "Request timed out",
+        badge: "Timeout",
+        answer: "The backend did not finish within 90 seconds. The result is unknown; retry when ready.",
+        data: {},
+        retry: true
+      });
+      finalStatus = {
+        kind: "warning",
+        title: "Request timed out",
+        detail: "The service may still be available. Retry the request or check service status.",
+        badge: "REST /ask"
+      };
+    } else if (captureFailed) {
+      renderResult({
+        kind: "error",
+        title: "Evidence could not be captured",
+        badge: "Error",
+        answer: error.message || "The selected screen evidence could not be prepared.",
+        data: {},
+        retry: false
+      });
+      finalStatus = {
+        kind: "warning",
+        title: "Screen evidence needs attention",
+        detail: "Replace the evidence or wait for the live preview, then submit again.",
+        badge: "REST /ask"
+      };
+    } else {
+      useMode = null;
+      backendState = "offline";
+      backendDetail = !navigator.onLine ?
+        "This browser appears to be offline. Reconnect, then use Check again." :
+        "The request could not reach the backend. Use Check again before retrying.";
+      renderResult({
+        kind: "error",
+        title: !navigator.onLine ? "Browser is offline" : "Network request failed",
+        badge: "Offline",
+        answer: backendDetail,
+        data: {},
+        retry: true
+      });
+    }
+  } finally {
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+    requestController = null;
+    isProcessing = false;
+    if (backendState === "offline") {
+      renderBackendStatus();
+    } else if (finalStatus) {
+      setServiceStatus(finalStatus.kind, finalStatus.title, finalStatus.detail, finalStatus.badge);
+    } else {
+      renderBackendStatus();
+    }
+    updateControls();
   }
-  isProcessing = false; statusDot.className = 'live'; statusText.textContent = 'Ready';
 }
 
-textInput.onkeydown = (e) => {
-  if (e.key === 'Enter' && textInput.value.trim() && !isProcessing) {
-    sendQuery(textInput.value.trim()); textInput.value = '';
+async function retryLastRequest() {
+  if (!lastRequest || isProcessing || isSelectingEvidence) return;
+  if (backendState !== "ready" || useMode !== "rest") {
+    await checkBackend();
   }
-};
-
-// ── Voice input ──
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (SR) {
-  const recognition = new SR();
-  recognition.continuous = false; recognition.interimResults = false; recognition.lang = 'en-US';
-  let recognizing = false;
-  recognition.onresult = (e) => sendQuery(e.results[0][0].transcript);
-  recognition.onerror = (e) => { recognizing = false; micIndicator.classList.remove('active'); micBtn.textContent = '🎤 Hold to Talk'; addEntry('Voice Error', 'Could not capture voice: ' + e.error, true); };
-  recognition.onend = () => { recognizing = false; micIndicator.classList.remove('active'); micBtn.textContent = '🎤 Hold to Talk'; };
-  micBtn.onmousedown = () => { if (!recognizing && screenStream && !isProcessing) { recognizing = true; micBtn.textContent = '🔴 Listening...'; micIndicator.classList.add('active'); recognition.start(); } };
-  micBtn.onmouseup = () => { if (recognizing) recognition.stop(); };
-  micBtn.ontouchstart = (e) => { e.preventDefault(); micBtn.onmousedown(); };
-  micBtn.ontouchend = (e) => { e.preventDefault(); micBtn.onmouseup(); };
-} else {
-  micBtn.onclick = () => addEntry('System', 'Voice not supported in this browser. Use the text box.', false);
+  if (backendState === "ready" && useMode === "rest") {
+    await sendQuery(lastRequest.query, lastRequest.image);
+  }
 }
+
+// ── Accessible controls and optional speech input ──
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let recognizing = false;
+
+function resetSpeechUi() {
+  recognizing = false;
+  micIndicator.hidden = true;
+  micBtn.textContent = "Start voice input";
+  micBtn.setAttribute("aria-pressed", "false");
+}
+
+function stopSpeechInput() {
+  if (!recognition || !recognizing) return;
+  try {
+    recognition.stop();
+  } catch (error) {
+    // Recognition may already be stopping; resetting the visible state is sufficient.
+  }
+  resetSpeechUi();
+}
+
+if (SpeechRecognition) {
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = "en-US";
+  micBtn.hidden = false;
+
+  recognition.onresult = event => {
+    if (!recognizing || micBtn.disabled || isProcessing || isSelectingEvidence) return;
+    const transcript = event.results && event.results[0] && event.results[0][0] ?
+      event.results[0][0].transcript : "";
+    if (transcript) {
+      const separator = textInput.value.trim() ? " " : "";
+      textInput.value = (textInput.value + separator + transcript).slice(0, 4000);
+      characterCount.textContent = textInput.value.length + " / 4000";
+      setInlineError(composerMessage, "");
+      updateControls();
+      textInput.focus();
+    }
+  };
+  recognition.onerror = event => {
+    resetSpeechUi();
+    setInlineError(composerMessage, "Voice input failed: " + (event.error || "unknown browser error") + ". Type your question instead.");
+  };
+  recognition.onend = () => {
+    resetSpeechUi();
+  };
+  micBtn.addEventListener("click", () => {
+    if (recognizing) {
+      recognition.stop();
+      return;
+    }
+    if (micBtn.disabled || isProcessing) return;
+    try {
+      recognizing = true;
+      micIndicator.hidden = false;
+      micBtn.textContent = "Stop voice input";
+      micBtn.setAttribute("aria-pressed", "true");
+      recognition.start();
+    } catch (error) {
+      resetSpeechUi();
+      setInlineError(composerMessage, "Voice input could not start. Type your question instead.");
+    }
+  });
+}
+
+shareBtn.addEventListener("click", startScreenShare);
+uploadBtn.addEventListener("click", () => uploadInput.click());
+uploadInput.addEventListener("change", event => {
+  const file = event.target.files && event.target.files[0];
+  handleScreenshotUpload(file);
+});
+replaceBtn.addEventListener("click", () => {
+  if (evidenceMode === "screen") {
+    startScreenShare();
+  } else {
+    uploadInput.click();
+  }
+});
+stopBtn.addEventListener("click", () => {
+  clearEvidence();
+  evidenceMessage.textContent = "Screen sharing stopped. Share again or upload a screenshot.";
+  evidenceMessage.classList.remove("error");
+});
+removeBtn.addEventListener("click", () => {
+  clearEvidence();
+  evidenceMessage.textContent = "Screen evidence removed. Choose another source to continue.";
+  evidenceMessage.classList.remove("error");
+});
+checkBtn.addEventListener("click", checkBackend);
+retryBtn.addEventListener("click", retryLastRequest);
+
+textInput.addEventListener("input", () => {
+  characterCount.textContent = textInput.value.length + " / 4000";
+  setInlineError(composerMessage, "");
+  updateControls();
+});
+textInput.addEventListener("keydown", event => {
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    if (!submitBtn.disabled) questionForm.requestSubmit();
+  }
+});
+questionForm.addEventListener("submit", event => {
+  event.preventDefault();
+  sendQuery(textInput.value);
+});
+
+window.addEventListener("online", () => {
+  if (!isProcessing && backendState === "offline") checkBackend();
+});
+window.addEventListener("offline", () => {
+  if (isProcessing) return;
+  stopSpeechInput();
+  useMode = null;
+  backendState = "offline";
+  backendDetail = "This browser appears to be offline. Reconnect, then use Check again.";
+  renderBackendStatus();
+  updateControls();
+});
+window.addEventListener("beforeunload", () => {
+  stopActiveStream();
+  if (requestController) requestController.abort();
+});
+
+renderEvidencePreview();
+updateControls();
+checkBackend();
 </script>
 </body>
 </html>
