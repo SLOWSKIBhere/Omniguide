@@ -2,6 +2,7 @@ import base64
 import io
 import os
 import unittest
+from contextlib import ExitStack, contextmanager
 from unittest.mock import patch
 
 from PIL import Image
@@ -25,15 +26,20 @@ from providers import (
 # google.genai is importable (providers.py:229-235). But requirements.txt
 # pins google-genai>=1.0.0, so it IS importable in this test/CI env — these
 # tests must mock the missing-dependency state instead of assuming it.
+@contextmanager
 def _mock_missing_google_genai():
-    return (
-        patch.object(GeminiProvider, "dependency_ready", return_value=False, create=True),
-        patch.object(
-            GeminiProvider,
-            "_sync_generate",
-            side_effect=ProviderUnavailableError("google-genai is not installed"),
-        ),
-    )
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(GeminiProvider, "dependency_ready", return_value=False, create=True)
+        )
+        stack.enter_context(
+            patch.object(
+                GeminiProvider,
+                "_sync_generate",
+                side_effect=ProviderUnavailableError("google-genai is not installed"),
+            )
+        )
+        yield
 
 
 class FakeProvider:
@@ -45,11 +51,16 @@ class FakeProvider:
         self.text = text
         self.calls = 0
 
-    def available_for(self, *, vision):
+    def configured_for(self, *, vision):
+        """Matches the real provider contract: credentials/model present,
+        independent of whether the runtime dependency is importable."""
         return self.vision if vision else self.text
 
+    def available_for(self, *, vision):
+        return self.configured_for(vision=vision)
+
     def describe(self):
-        return {"name": self.name, "configured": True}
+        return {"name": self.name, "configured": True, "dependency_ready": True, "available": True}
 
     async def generate_text(self, **kwargs):
         self.calls += 1
@@ -97,6 +108,68 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
             result.attempts,
             ["first: Provider returned non-JSON output"],
         )
+
+    async def test_generate_text_reports_specific_dependency_error_not_generic_message(self):
+        """Gemini configured (has key) but google-genai not installed: the
+        failure must be the specific dependency error, never the generic
+        'No compatible model provider is configured' message — and it must
+        still be possible to fail over to another configured provider."""
+        os.environ["GEMINI_API_KEY"] = "fake-key-for-test"
+        try:
+            with _mock_missing_google_genai():
+                gemini = GeminiProvider()
+                self.assertTrue(gemini.is_configured())
+                self.assertFalse(gemini.dependency_ready())  # mocked: google-genai treated as missing
+
+                fallback = FakeProvider("fallback", result="grounded answer")
+                router = ProviderRouter([gemini, fallback])
+                result = await router.generate_text(system_prompt="s", user_prompt="u")
+
+                # Failover still works: the fallback provider served the answer.
+                self.assertEqual(result.provider, "fallback")
+                self.assertEqual(fallback.calls, 1)
+                # The specific dependency error was recorded, not a generic one.
+                self.assertEqual(len(result.attempts), 1)
+                self.assertIn("gemini", result.attempts[0])
+                self.assertIn("google-genai is not installed", result.attempts[0])
+                self.assertNotIn("is not configured", result.attempts[0])
+        finally:
+            os.environ.pop("GEMINI_API_KEY", None)
+
+    async def test_generate_text_gemini_only_raises_specific_error_not_generic(self):
+        """When Gemini is the ONLY configured provider and its dependency is
+        missing, the final raised error must still name the real cause —
+        never fall back to 'Set OPENAI_COMPAT_API_KEY or GEMINI_API_KEY.'"""
+        os.environ["GEMINI_API_KEY"] = "fake-key-for-test"
+        try:
+            with _mock_missing_google_genai():
+                gemini = GeminiProvider()
+                router = ProviderRouter([gemini])
+                with self.assertRaises(ProviderCallError) as ctx:
+                    await router.generate_text(system_prompt="s", user_prompt="u")
+                message = str(ctx.exception)
+                self.assertIn("google-genai is not installed", message)
+                self.assertNotIn("Set OPENAI_COMPAT_API_KEY or GEMINI_API_KEY", message)
+        finally:
+            os.environ.pop("GEMINI_API_KEY", None)
+
+    async def test_generate_json_reports_specific_dependency_error_not_generic_message(self):
+        """Same contract as generate_text, for the JSON path."""
+        os.environ["GEMINI_API_KEY"] = "fake-key-for-test"
+        try:
+            with _mock_missing_google_genai():
+                gemini = GeminiProvider()
+                fallback = FakeProvider("fallback", result='{"answer": "grounded"}')
+                router = ProviderRouter([gemini, fallback])
+                result = await router.generate_json(system_prompt="s", user_prompt="u")
+
+                self.assertEqual(result.provider, "fallback")
+                self.assertEqual(result.data, {"answer": "grounded"})
+                self.assertEqual(len(result.attempts), 1)
+                self.assertIn("google-genai is not installed", result.attempts[0])
+                self.assertNotIn("is not configured", result.attempts[0])
+        finally:
+            os.environ.pop("GEMINI_API_KEY", None)
 
     async def test_context_is_not_grounded_when_evidence_agents_fail(self):
         builder = ContextBuilder(FailingVision(), FailingOCR())
@@ -191,6 +264,29 @@ class ApiTests(unittest.TestCase):
         self.assertFalse(data["provider_ready"])
         self.assertFalse(data["gemini_key_configured"])
         self.assertEqual(data["execution_contract"], "screen_grounded_only")
+
+    def test_health_distinguishes_configured_from_dependency_ready(self):
+        """With GEMINI_API_KEY set but google-genai not installed, /health
+        must report configured=True, dependency_ready=False, available=False
+        for the gemini provider entry — and NOT claim it is available."""
+        os.environ["GEMINI_API_KEY"] = "fake-key-for-test"
+        try:
+            import importlib
+            import main
+            importlib.reload(main)
+            from fastapi.testclient import TestClient
+            client = TestClient(main.app)
+            data = client.get("/health").json()
+            gemini_entry = next(p for p in data["providers"] if p["name"] == "gemini")
+            self.assertTrue(gemini_entry["configured"])
+            self.assertFalse(gemini_entry["dependency_ready"])
+            self.assertFalse(gemini_entry["available"])
+            self.assertTrue(data["gemini_key_configured"])
+        finally:
+            os.environ.pop("GEMINI_API_KEY", None)
+            import importlib
+            import main
+            importlib.reload(main)
 
     def test_ask_returns_503_instead_of_fake_answer(self):
         image = Image.new("RGB", (40, 40), "white")
