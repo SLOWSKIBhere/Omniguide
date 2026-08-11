@@ -2,6 +2,7 @@ import base64
 import io
 import os
 import unittest
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -87,13 +88,17 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         still be possible to fail over to another configured provider."""
         os.environ["GEMINI_API_KEY"] = "fake-key-for-test"
         try:
-            gemini = GeminiProvider()
-            self.assertTrue(gemini.is_configured())
-            self.assertFalse(gemini.dependency_ready())  # google-genai not installed in this env
+            with patch(
+                "providers.GeminiProvider._sync_generate",
+                side_effect=ProviderCallError("google-genai is not installed"),
+            ), patch("providers.GeminiProvider.dependency_ready", return_value=False):
+                gemini = GeminiProvider()
+                self.assertTrue(gemini.is_configured())
+                self.assertFalse(gemini.dependency_ready())
 
-            fallback = FakeProvider("fallback", result="grounded answer")
-            router = ProviderRouter([gemini, fallback])
-            result = await router.generate_text(system_prompt="s", user_prompt="u")
+                fallback = FakeProvider("fallback", result="grounded answer")
+                router = ProviderRouter([gemini, fallback])
+                result = await router.generate_text(system_prompt="s", user_prompt="u")
 
             # Failover still works: the fallback provider served the answer.
             self.assertEqual(result.provider, "fallback")
@@ -112,13 +117,17 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         never fall back to 'Set OPENAI_COMPAT_API_KEY or GEMINI_API_KEY.'"""
         os.environ["GEMINI_API_KEY"] = "fake-key-for-test"
         try:
-            gemini = GeminiProvider()
-            router = ProviderRouter([gemini])
-            with self.assertRaises(ProviderCallError) as ctx:
-                await router.generate_text(system_prompt="s", user_prompt="u")
-            message = str(ctx.exception)
-            self.assertIn("google-genai is not installed", message)
-            self.assertNotIn("Set OPENAI_COMPAT_API_KEY or GEMINI_API_KEY", message)
+            with patch(
+                "providers.GeminiProvider._sync_generate",
+                side_effect=ProviderCallError("google-genai is not installed"),
+            ):
+                gemini = GeminiProvider()
+                router = ProviderRouter([gemini])
+                with self.assertRaises(ProviderCallError) as ctx:
+                    await router.generate_text(system_prompt="s", user_prompt="u")
+                message = str(ctx.exception)
+                self.assertIn("google-genai is not installed", message)
+                self.assertNotIn("Set OPENAI_COMPAT_API_KEY or GEMINI_API_KEY", message)
         finally:
             os.environ.pop("GEMINI_API_KEY", None)
 
@@ -126,16 +135,20 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         """Same contract as generate_text, for the JSON path."""
         os.environ["GEMINI_API_KEY"] = "fake-key-for-test"
         try:
-            gemini = GeminiProvider()
-            fallback = FakeProvider("fallback", result='{"answer": "grounded"}')
-            router = ProviderRouter([gemini, fallback])
-            result = await router.generate_json(system_prompt="s", user_prompt="u")
+            with patch(
+                "providers.GeminiProvider._sync_generate",
+                side_effect=ProviderCallError("google-genai is not installed"),
+            ):
+                gemini = GeminiProvider()
+                fallback = FakeProvider("fallback", result='{"answer": "grounded"}')
+                router = ProviderRouter([gemini, fallback])
+                result = await router.generate_json(system_prompt="s", user_prompt="u")
 
-            self.assertEqual(result.provider, "fallback")
-            self.assertEqual(result.data, {"answer": "grounded"})
-            self.assertEqual(len(result.attempts), 1)
-            self.assertIn("google-genai is not installed", result.attempts[0])
-            self.assertNotIn("is not configured", result.attempts[0])
+                self.assertEqual(result.provider, "fallback")
+                self.assertEqual(result.data, {"answer": "grounded"})
+                self.assertEqual(len(result.attempts), 1)
+                self.assertIn("google-genai is not installed", result.attempts[0])
+                self.assertNotIn("is not configured", result.attempts[0])
         finally:
             os.environ.pop("GEMINI_API_KEY", None)
 
@@ -226,15 +239,16 @@ class ApiTests(unittest.TestCase):
         try:
             import importlib
             import main
-            importlib.reload(main)
-            from fastapi.testclient import TestClient
-            client = TestClient(main.app)
-            data = client.get("/health").json()
-            gemini_entry = next(p for p in data["providers"] if p["name"] == "gemini")
-            self.assertTrue(gemini_entry["configured"])
-            self.assertFalse(gemini_entry["dependency_ready"])
-            self.assertFalse(gemini_entry["available"])
-            self.assertTrue(data["gemini_key_configured"])
+            with patch("providers.GeminiProvider.dependency_ready", return_value=False):
+                importlib.reload(main)
+                from fastapi.testclient import TestClient
+                client = TestClient(main.app)
+                data = client.get("/health").json()
+                gemini_entry = next(p for p in data["providers"] if p["name"] == "gemini")
+                self.assertTrue(gemini_entry["configured"])
+                self.assertFalse(gemini_entry["dependency_ready"])
+                self.assertFalse(gemini_entry["available"])
+                self.assertTrue(data["gemini_key_configured"])
         finally:
             os.environ.pop("GEMINI_API_KEY", None)
             import importlib
