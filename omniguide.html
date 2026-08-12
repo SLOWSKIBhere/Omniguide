@@ -99,9 +99,9 @@
 <canvas id="canvas"></canvas>
 
 <script>
-const BACKEND_URL = "https://omniguide-backend-973581476293.us-central1.run.app";
+const BACKEND_URL = window.location.origin;
 const ASK_URL = BACKEND_URL + "/ask";
-const WS_URL = "wss://omniguide-backend-973581476293.us-central1.run.app/ws";
+const WS_URL = (window.location.protocol === "https:" ? "wss://" : "ws://") + window.location.host + "/ws";
 const HEALTH_URL = BACKEND_URL + "/health";
 
 let screenStream = null;
@@ -156,7 +156,7 @@ async function checkBackend() {
   try {
     const res = await fetch(HEALTH_URL);
     const data = await res.json();
-    if (data.status && data.gemini_key_configured) {
+    if (data.status && data.provider_ready) {
       statusDot.className = 'live';
       statusText.textContent = 'Backend live · v' + (data.version || '1.x');
       if (data.agents) statusText.textContent += ' · ' + data.agents.length + ' agents';
@@ -169,7 +169,7 @@ async function checkBackend() {
       shareBtn.disabled = false;
     } else if (data.status) {
       statusDot.className = 'loading';
-      statusText.textContent = 'Backend live but Gemini key NOT configured';
+      statusText.textContent = 'Backend live but NO provider key configured';
     } else { throw new Error('Bad status'); }
   } catch (e) {
     statusDot.className = '';

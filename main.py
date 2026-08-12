@@ -11,12 +11,16 @@ from urllib.parse import unquote, urlparse
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from pathlib import Path
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from agents import ContextBuilder, IntentRouter, OCRAgent, ReasoningAgent, ResponseAgent, VisionAgent
 from models import AskRequest
 from providers import ProviderRouter
 from telemetry import log_interaction
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger("omniguide")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
@@ -95,6 +99,13 @@ async def run_pipeline(image_base64: str, user_query: str) -> dict:
         agent_chain=chain,
         traces=traces,
     )
+
+
+@app.get("/", include_in_schema=False)
+async def serve_frontend():
+    """Serve the OmniGuide SPA from the same origin as the API."""
+    html_path = Path(__file__).parent / "omniguide.html"
+    return FileResponse(html_path, media_type="text/html")
 
 
 @app.get("/health")
