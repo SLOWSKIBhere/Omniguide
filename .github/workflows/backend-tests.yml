@@ -2,11 +2,10 @@ name: Backend tests
 
 on:
   pull_request:
+  workflow_dispatch:
 
-# NOTE: Push-triggered backend tests were removed to avoid running CI on direct pushes
-# (e.g., automated audits or bot accounts). To re-enable push-triggered tests, add:
-# push:
-#   branches: [main]
+# Push-triggered backend tests are intentionally disabled to avoid running CI on
+# every direct push. Maintainers can still run this workflow manually when needed.
 
 permissions:
   contents: read
