@@ -1,8 +1,9 @@
 # Environment & secrets
 .env
-.env.yaml
-.env.local
-.env.*.local
+env
+.env.*
+!.env.example
+*.env
 *.key
 *.pem
 
@@ -12,8 +13,15 @@ __pycache__/
 *.pyo
 *.pyd
 *.egg-info/
+.venv/
+venv/
 dist/
 build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Project artifacts
 *.zip
